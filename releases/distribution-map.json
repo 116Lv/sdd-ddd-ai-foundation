@@ -1,0 +1,97 @@
+[
+  {
+    "source": "distribution/managed/checklists/completion.md",
+    "target": ".foundation/checklists/completion.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/checklists/spec-design.md",
+    "target": ".foundation/checklists/spec-design.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/guide.md",
+    "target": ".foundation/guide.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/skills/foundation-completion-review/SKILL.md.template",
+    "target": ".foundation/skills/foundation-completion-review/SKILL.md.template",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/skills/foundation-spec-review/SKILL.md.template",
+    "target": ".foundation/skills/foundation-spec-review/SKILL.md.template",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/templates/adr.md",
+    "target": ".foundation/templates/adr.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/templates/context-map.md",
+    "target": ".foundation/templates/context-map.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/templates/domain-rules.md",
+    "target": ".foundation/templates/domain-rules.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/templates/runbook.md",
+    "target": ".foundation/templates/runbook.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/templates/state-model.md",
+    "target": ".foundation/templates/state-model.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/templates/verification.md",
+    "target": ".foundation/templates/verification.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/workflow.md",
+    "target": ".foundation/workflow.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/starter/AGENTS.md.template",
+    "target": "AGENTS.md",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/CONTRIBUTING.md.template",
+    "target": "CONTRIBUTING.md",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/README.md.template",
+    "target": "README.md",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/docs/README.md.template",
+    "target": "docs/README.md",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/docs/domain/glossary.md.template",
+    "target": "docs/domain/glossary.md",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/docs/product/brief.md.template",
+    "target": "docs/product/brief.md",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/docs/project/profile.md.template",
+    "target": "docs/project/profile.md",
+    "mode": "starter"
+  }
+]
