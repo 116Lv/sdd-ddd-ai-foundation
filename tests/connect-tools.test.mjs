@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs, { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { connectTools } from '../tools/connect-tools.mjs';
@@ -208,11 +208,11 @@ test('rolls_back_published_files_when_a_later_write_fails', async (t) => {
   const baseline = await readFile(join(projectRoot, lockName));
   const previousSkill = await readFile(join(projectRoot, sharedSkills[0]));
   await writeProjectFile(projectRoot, skillSources[0], '새 검토 지침');
-  const originalRename = fs.rename;
+  const originalLink = fs.link;
   const failure = Object.assign(new Error('lock publish failed'), { code: 'EPERM' });
-  const mock = t.mock.method(fs, 'rename', async (from, to) => {
-    if (to === join(projectRoot, lockName)) throw failure;
-    return originalRename(from, to);
+  const mock = t.mock.method(fs, 'link', async (from, to) => {
+    if (to === join(projectRoot, lockName) && basename(from).startsWith('new-')) throw failure;
+    return originalLink(from, to);
   });
   syncBuiltinESMExports();
   t.after(() => {
@@ -227,17 +227,113 @@ test('rolls_back_published_files_when_a_later_write_fails', async (t) => {
   assert.ok((await readdir(projectRoot)).every((name) => !name.startsWith('.foundation-stage-')));
 });
 
+test('atomic_editor_save_during_owned_refresh_is_preserved_as_a_conflict', async (t) => {
+  const { projectRoot } = await fixture(t);
+  await connectTools({ projectRoot, tools: ['codex'] });
+  const lockPath = join(projectRoot, lockName);
+  const baseline = await readFile(lockPath);
+  const target = join(projectRoot, sharedSkills[0]);
+  const editorTemp = join(dirname(target), 'editor.tmp');
+  const edited = '편집기가 저장한 지역 규칙\n';
+  await writeFile(editorTemp, edited);
+  await writeProjectFile(projectRoot, skillSources[0], '새 원본');
+  const originalRename = fs.rename;
+  let saved = false;
+  const mock = t.mock.method(fs, 'rename', async (from, to) => {
+    if (!saved && (from === target || (to === target && basename(from).startsWith('new-')))) {
+      await originalRename(editorTemp, target);
+      saved = true;
+    }
+    return originalRename(from, to);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    mock.mock.restore();
+    syncBuiltinESMExports();
+  });
+  const result = await connectTools({ projectRoot, tools: ['codex', 'claude'] }).catch((error) => error);
+  assert.ok(saved, 'the test must perform an atomic editor save during publication');
+  assert.equal(await readFile(target, 'utf8'), edited);
+  assert.equal(result.code, 'CONNECTION_CONFLICT');
+  assert.ok(result.message.includes(target), 'the conflict must identify the project target');
+  assert.deepEqual(await readFile(lockPath), baseline);
+  await assert.rejects(lstat(join(projectRoot, '.claude')), { code: 'ENOENT' });
+  assert.ok((await readdir(projectRoot)).every((name) => !name.startsWith('.foundation-stage-')));
+});
+
+test('failed_rollback_keeps_the_previous_file_and_reports_the_recovery_location', async (t) => {
+  const { projectRoot } = await fixture(t);
+  await connectTools({ projectRoot, tools: ['codex'] });
+  const lockPath = join(projectRoot, lockName);
+  const baseline = await readFile(lockPath);
+  const target = join(projectRoot, sharedSkills[0]);
+  const previous = await readFile(target);
+  await writeProjectFile(projectRoot, skillSources[0], '새 원본');
+
+  function injectFailures(original) {
+    return async (from, to) => {
+      if ((to === lockPath && basename(from).startsWith('new-'))
+          || (to === target && basename(from).startsWith('old-'))) {
+        throw Object.assign(new Error('publish or restore denied'), { code: 'EPERM' });
+      }
+      return original(from, to);
+    };
+  }
+  const renameMock = t.mock.method(fs, 'rename', injectFailures(fs.rename));
+  const linkMock = t.mock.method(fs, 'link', injectFailures(fs.link));
+  syncBuiltinESMExports();
+  t.after(() => {
+    linkMock.mock.restore();
+    renameMock.mock.restore();
+    syncBuiltinESMExports();
+  });
+  let recovery;
+  await assert.rejects(connectTools({ projectRoot, tools: ['codex', 'claude'] }), (error) => {
+    assert.equal(error.code, 'ROLLBACK_FAILED');
+    assert.ok(error.recovery, 'the failure must expose actionable recovery details');
+    recovery = error.recovery;
+    return true;
+  });
+  const { directory, files } = recovery;
+  assert.equal(dirname(directory), projectRoot);
+  assert.match(basename(directory), /^\.foundation-stage-/);
+  const failed = files.find((file) => file.path === target);
+  assert.ok(failed?.backup, 'the failed target must be associated with the retained backup');
+  assert.equal(dirname(failed.backup), directory);
+  assert.equal(failed.code, 'EPERM');
+  assert.deepEqual(await readFile(failed.backup), previous);
+  assert.equal(await readFile(failed.displaced, 'utf8'), '새 원본');
+  await assert.rejects(lstat(target), { code: 'ENOENT' });
+  assert.deepEqual(await readFile(lockPath), baseline);
+  await assert.rejects(lstat(join(projectRoot, '.claude')), { code: 'ENOENT' });
+});
+
+test('a_file_in_place_of_a_target_directory_is_a_cli_conflict', async (t) => {
+  const { projectRoot } = await fixture(t);
+  const baseline = await readFile(join(projectRoot, lockName));
+  await writeProjectFile(projectRoot, '.agents', 'user file');
+  const result = spawnSync(process.execPath, [cli, '--tool', 'codex', '--tool', 'claude', '--json'], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(JSON.parse(result.stderr).code, 'CONNECTION_CONFLICT');
+  assert.equal(await readFile(join(projectRoot, '.agents'), 'utf8'), 'user file');
+  assert.deepEqual(await readFile(join(projectRoot, lockName)), baseline);
+  await assert.rejects(lstat(join(projectRoot, '.claude')), { code: 'ENOENT' });
+});
+
 test('overlapping_connections_can_retry_after_the_first_lock_is_published', async (t) => {
   const { projectRoot } = await fixture(t);
   const publishingLock = Promise.withResolvers();
   const proceed = Promise.withResolvers();
-  const originalRename = fs.rename;
-  const mock = t.mock.method(fs, 'rename', async (from, to) => {
-    if (to === join(projectRoot, lockName)) {
+  const originalLink = fs.link;
+  const mock = t.mock.method(fs, 'link', async (from, to) => {
+    if (to === join(projectRoot, lockName) && basename(from).startsWith('new-')) {
       publishingLock.resolve();
       await proceed.promise;
     }
-    return originalRename(from, to);
+    return originalLink(from, to);
   });
   syncBuiltinESMExports();
   t.after(() => {

@@ -1,4 +1,4 @@
-import { link, mkdir, readFile, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, rename, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -16,7 +16,7 @@ function isRecord(value) {
 }
 
 async function readRegularFile(path, code, allowMissing = false) {
-  const stat = await inspectPath(path, { allowMissing });
+  const stat = await inspectPath(path, { allowMissing, ancestorCode: code });
   if (!stat) return undefined;
   if (!stat.isFile()) throw codedError(code, '일반 파일이어야 합니다. ' + path);
   return readFile(path);
@@ -116,7 +116,7 @@ async function planConnection(projectDir, requestedTools) {
 }
 
 async function ensureDirectory(path, createdDirectories) {
-  const stat = await inspectPath(path, { allowMissing: true });
+  const stat = await inspectPath(path, { allowMissing: true, ancestorCode: 'CONNECTION_CONFLICT' });
   if (stat?.isDirectory()) return;
   if (stat) throw codedError('CONNECTION_CONFLICT', '상위 경로는 폴더여야 합니다. ' + path);
   await ensureDirectory(dirname(path), createdDirectories);
@@ -124,36 +124,62 @@ async function ensureDirectory(path, createdDirectories) {
     await mkdir(path);
     createdDirectories.push(path);
   } catch (error) {
-    if (error.code !== 'EEXIST' || !(await inspectPath(path)).isDirectory()) throw error;
+    if (error.code !== 'EEXIST' || !(await inspectPath(path, { ancestorCode: 'CONNECTION_CONFLICT' })).isDirectory()) {
+      throw error;
+    }
   }
 }
 
-async function assertFileState(path, expected) {
+async function assertFileState(path, expected, target = path) {
   const current = await readRegularFile(path, 'CONNECTION_CONFLICT', true);
   if (expected ? !current?.equals(expected) : current !== undefined) {
-    throw codedError('CONNECTION_CONFLICT', '연결 도중 파일이 변경되었습니다. ' + path);
+    throw codedError('CONNECTION_CONFLICT', '연결 도중 파일이 변경되었습니다. ' + target);
   }
 }
 
-async function rollBack(published, createdDirectories) {
-  const errors = [];
-  for (const { path, bytes, backup } of published.reverse()) {
+async function restoreFile(staged, path) {
+  if (!(await inspectPath(staged)).isFile()) {
+    throw codedError('CONNECTION_CONFLICT', '복원 대상은 일반 파일이어야 합니다. ' + staged);
+  }
+  if (!(await inspectPath(dirname(path), { ancestorCode: 'CONNECTION_CONFLICT' })).isDirectory()) {
+    throw codedError('CONNECTION_CONFLICT', '상위 경로는 폴더여야 합니다. ' + dirname(path));
+  }
+  await link(staged, path);
+}
+
+async function rollBack(changes, createdDirectories) {
+  const failures = [];
+  for (const { path, bytes, staged, backup, published } of changes.reverse()) {
+    let displaced;
     try {
-      await assertFileState(path, bytes);
-      if (backup) await rename(backup, path);
-      else await unlink(path);
+      if (published) {
+        await assertFileState(path, bytes);
+        const aside = staged + '-rollback';
+        await rename(path, aside);
+        displaced = aside;
+        try {
+          await assertFileState(displaced, bytes, path);
+        } catch (error) {
+          // 복구 직전의 편집은 보존한다. 대상이 다시 생겼으면 두 파일을 모두 보관한다.
+          await restoreFile(displaced, path);
+          throw error;
+        }
+      }
+      if (backup) await restoreFile(backup, path);
     } catch (error) {
-      errors.push(error);
+      failures.push({ path, backup, displaced, code: error.code, message: error.message });
     }
   }
   for (const path of createdDirectories.reverse()) {
     try {
       await rmdir(path);
     } catch (error) {
-      if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code)) errors.push(error);
+      if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code)) {
+        failures.push({ path, code: error.code, message: error.message });
+      }
     }
   }
-  return errors;
+  return failures;
 }
 
 async function publishConnection(projectDir, { result, writes }) {
@@ -162,27 +188,33 @@ async function publishConnection(projectDir, { result, writes }) {
       file.staged = join(stage, 'new-' + index);
       await writeFile(file.staged, file.bytes, { flag: 'wx' });
     }
-    const published = [];
+    const changes = [];
     const createdDirectories = [];
     try {
       for (const [index, file] of writes.entries()) {
         const { path, before, staged } = file;
         await assertFileState(path, before);
         if (before) {
-          file.backup = join(stage, 'old-' + index);
-          await link(path, file.backup);
-          await rename(staged, path);
+          const backup = join(stage, 'old-' + index);
+          // 실제로 옮겨낸 파일을 검사한 뒤 빈 경로에만 게시한다.
+          await rename(path, backup);
+          file.backup = backup;
+          changes.push(file);
+          await assertFileState(backup, before, path);
         } else {
           await ensureDirectory(dirname(path), createdDirectories);
-          // 같은 볼륨에서 준비한 파일을 게시한다. 대상이 그 사이 생기면 덮어쓰지 않는다.
-          await link(staged, path);
         }
-        published.push(file);
+        await link(staged, path);
+        file.published = true;
+        if (!before) changes.push(file);
       }
     } catch (error) {
-      const rollbackErrors = await rollBack(published, createdDirectories);
-      if (rollbackErrors.length) {
-        throw codedError('ROLLBACK_FAILED', error.message + '\n' + rollbackErrors.map(({ message }) => message).join('\n'), error);
+      const files = await rollBack(changes, createdDirectories);
+      if (files.length) {
+        const conflictsOnly = [error, ...files].every(({ code }) => code === 'EEXIST' || conflictCodes.includes(code));
+        const code = conflictsOnly ? 'CONNECTION_CONFLICT' : 'ROLLBACK_FAILED';
+        const message = error.message + '\n자동 복구가 끝나지 않았습니다. 보관 폴더 ' + stage;
+        throw Object.assign(codedError(code, message, error), { recovery: { directory: stage, files } });
       }
       if (error.code === 'EEXIST') {
         throw codedError('CONNECTION_CONFLICT', '연결 도중 대상 경로가 생성되었습니다. ' + error.path, error);
@@ -190,7 +222,7 @@ async function publishConnection(projectDir, { result, writes }) {
       throw error;
     }
     return result;
-  });
+  }, { preserveOnError: (error) => error.recovery !== undefined });
 }
 
 async function removeGuard(path) {
@@ -272,11 +304,16 @@ async function main() {
       }
     }
   } catch (error) {
-    const { code = 'CONNECTION_ERROR', message, cleanupWarning, guardWarning } = error;
+    const { code = 'CONNECTION_ERROR', message, cleanupWarning, guardWarning, recovery } = error;
     if (process.argv.includes('--json')) {
-      console.error(JSON.stringify({ code, message, cleanupWarning, guardWarning }));
+      console.error(JSON.stringify({ code, message, cleanupWarning, guardWarning, recovery }));
     } else {
       console.error('[' + code + '] ' + message);
+      for (const file of recovery?.files ?? []) {
+        console.error('[' + file.code + '] ' + file.path + ' ' + file.message);
+        if (file.backup) console.error('이전 파일 ' + file.backup);
+        if (file.displaced) console.error('복구 중 옮긴 파일 ' + file.displaced);
+      }
       for (const warning of [cleanupWarning, guardWarning]) {
         if (warning) console.error(warning.message);
       }

@@ -36,7 +36,7 @@ export async function statWithoutSymlink(path) {
 }
 
 // 경로의 끝뿐 아니라 기존 상위 폴더도 검사한다.
-export async function inspectPath(absolute, { allowMissing = false } = {}) {
+export async function inspectPath(absolute, { allowMissing = false, ancestorCode = 'INVALID_PATH' } = {}) {
   const { root } = parse(absolute);
   const subpath = absolute.slice(root.length);
   const parts = subpath ? subpath.split(sep) : [];
@@ -44,7 +44,7 @@ export async function inspectPath(absolute, { allowMissing = false } = {}) {
   let stat = await statWithoutSymlink(current);
   for (const part of parts) {
     if (!stat.isDirectory()) {
-      throw codedError('INVALID_PATH', '상위 경로가 폴더가 아닙니다. ' + current);
+      throw codedError(ancestorCode, '상위 경로가 폴더가 아닙니다. ' + current);
     }
     current = join(current, part);
     try {
@@ -70,7 +70,7 @@ async function removeStagingDirectory(path) {
   }
 }
 
-export async function withStagingDirectory(parent, action) {
+export async function withStagingDirectory(parent, action, { preserveOnError } = {}) {
   if (!(await inspectPath(parent, { allowMissing: true }))) {
     await mkdir(parent, { recursive: true });
     await inspectPath(parent);
@@ -86,6 +86,7 @@ export async function withStagingDirectory(parent, action) {
   try {
     result = await action(stage);
   } catch (error) {
+    if (preserveOnError?.(error)) throw error;
     const cleanupWarning = await removeStagingDirectory(resolvedStage);
     if (cleanupWarning) error.cleanupWarning = cleanupWarning;
     throw error;
