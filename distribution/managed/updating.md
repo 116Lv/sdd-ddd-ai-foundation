@@ -38,7 +38,13 @@ node .foundation/tools/connect-tools.mjs --tool codex --tool claude
 node .foundation/tools/record-baseline.mjs --candidate-root ../foundation-next
 ```
 
-기록 도구는 설치된 관리 파일의 바이트, 폐기 파일의 정리, 현재 AI 연결과 기록의 일치를 확인하고 `foundation.lock.json`의 버전·관리 목록·호환성만 갱신합니다. 검증 결과는 프로젝트의 검증 기록에 남깁니다. 종료 코드 0은 기록 완료, 1은 파일 불일치 또는 연결 작업과의 경합, 2는 입력 또는 환경 오류입니다. 기록 후 `git diff`에서 버전과 관리 파일, 연결 변경을 확인하고 한 변경 단위로 커밋합니다.
+관리 경로가 추가되면 `added`의 각 경로를 검토하고 승인할 경로마다 `--acknowledge-new-path`를 지정합니다. 지정하는 경로는 보고서와 같은 프로젝트 상대 경로입니다. 후보를 수동 복사한 파일도 승인 목록에 포함합니다. 기존 파일과 경로가 겹치면 바이트가 같은 경우에도 `untracked-path`로 표시되므로, 프로젝트에서 유지할 내용과 관리 대상으로 편입할 경로를 검토합니다. 아래는 두 경로를 승인하는 예시입니다.
+
+```shell
+node .foundation/tools/record-baseline.mjs --candidate-root ../foundation-next --acknowledge-new-path .foundation/templates/new-form.md --acknowledge-new-path .foundation/new-guide.md
+```
+
+기록 도구는 설치된 관리 파일의 바이트, 폐기 파일의 정리, 현재 AI 연결과 기록의 일치를 확인하고 `foundation.lock.json`의 버전·관리 목록·호환성만 갱신합니다. 검증 결과는 프로젝트의 검증 기록에 남깁니다. 종료 코드 0은 기록 완료, 1은 승인 누락·파일 불일치·연결 작업과의 경합, 2는 입력 또는 환경 오류입니다. 기록 후 `git diff`에서 버전과 관리 파일, 연결 변경을 확인하고 한 변경 단위로 커밋합니다.
 
 ## 되돌리기
 

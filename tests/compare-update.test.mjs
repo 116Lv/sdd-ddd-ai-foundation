@@ -116,3 +116,48 @@ test('rejects linked candidate assets and reports blocked local paths without fo
   assert.ok(report.conflicts.length > 0);
   assert.ok(report.conflicts.every(({ path, reason }) => path.startsWith('.foundation/checks/') && reason === 'local-path'));
 });
+
+test('reports_an_untracked_file_even_when_it_matches_a_candidate_addition', async (t) => {
+  const input = await fixture(t);
+  const { candidateRoot, projectRoot } = input;
+  const path = '.foundation/local-policy.md';
+  await writeProjectFile(projectRoot, path, '이미 존재하는 정책');
+  await changeManaged(candidateRoot, { [path]: '이미 존재하는 정책' });
+  const before = await snapshot(projectRoot);
+  const report = await compareUpdate(input);
+  assert.deepEqual(report.added, [path]);
+  assert.deepEqual(report.conflicts, [{ path, reason: 'untracked-path', matchesCandidate: true }]);
+  assert.deepEqual(await snapshot(projectRoot), before);
+});
+
+test('only_pristine_managed_ancestors_are_planned_layout_changes', async (t) => {
+  const input = await fixture(t);
+  const { dir, candidateRoot, projectRoot } = input;
+  const clean = '.foundation/clean';
+  const edited = '.foundation/edited';
+  const untracked = '.foundation/untracked';
+  const linked = '.foundation/linked';
+  const child = (path) => path + '/new.md';
+  await changeManaged(projectRoot, { [clean]: '이전 파일', [edited]: '이전 파일', [linked]: '이전 파일' });
+  await writeProjectFile(projectRoot, edited, '직접 편집');
+  await writeProjectFile(projectRoot, untracked, '프로젝트 파일');
+  await rm(join(projectRoot, linked));
+  const outside = join(dir, 'outside');
+  await writeProjectFile(outside, 'keep.md', '외부 파일');
+  await symlink(outside, join(projectRoot, linked), process.platform === 'win32' ? 'junction' : 'dir');
+  await changeManaged(candidateRoot, Object.fromEntries(
+    [clean, edited, untracked, linked].map((path) => [child(path), '후보 파일']),
+  ));
+  const report = await compareUpdate(input);
+  assert.deepEqual(report.removed, [clean, edited, linked]);
+  assert.deepEqual(report.added, [clean, edited, linked, untracked].map(child));
+  assert.deepEqual(report.conflicts, [
+    { path: edited, reason: 'local-edit', matchesCandidate: false },
+    { path: child(edited), reason: 'local-path', matchesCandidate: false },
+    { path: linked, reason: 'local-path', matchesCandidate: false },
+    { path: child(linked), reason: 'local-path', matchesCandidate: false },
+    { path: child(untracked), reason: 'local-path', matchesCandidate: false },
+  ]);
+  assert.equal(await readFile(join(projectRoot, untracked), 'utf8'), '프로젝트 파일');
+  assert.equal(await readFile(join(outside, 'keep.md'), 'utf8'), '외부 파일');
+});

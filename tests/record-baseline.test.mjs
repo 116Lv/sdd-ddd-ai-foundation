@@ -112,23 +112,36 @@ test('released_zip_runs_its_own_update_tools_without_repo_or_dependencies', asyn
     const help = run(cli, '--help');
     assert.equal(help.status, 0, help.stderr);
     assert.match(help.stdout, /--candidate-root/);
+    if (cli === 'record-baseline') assert.match(help.stdout, /--acknowledge-new-path/);
     const invalid = run(cli, '--json');
     assert.equal(invalid.status, 2, invalid.stderr);
     assert.equal(JSON.parse(invalid.stderr).code, 'INVALID_PATH');
   }
   const args = ['--candidate-root', candidateRoot, '--json'];
-  await changeManaged(candidateRoot, { [guide]: '새 안내' });
+  const added = ['.foundation/new-one.md', '.foundation/new-two.md'];
+  await changeManaged(candidateRoot, { [guide]: '새 안내', [added[0]]: '새 문서', [added[1]]: '새 양식' });
   const report = run('compare-update', ...args);
   assert.equal(report.status, 0, report.stderr);
   assert.deepEqual(JSON.parse(report.stdout).changed, [guide]);
+  assert.deepEqual(JSON.parse(report.stdout).added, added);
   const uninstalled = run('record-baseline', ...args);
   assert.equal(uninstalled.status, 1, uninstalled.stderr);
   assert.equal(JSON.parse(uninstalled.stderr).code, 'BASELINE_CONFLICT');
-  await copyFile(join(candidateRoot, guide), join(extracted, guide));
+  for (const path of [guide, ...added]) await copyFile(join(candidateRoot, path), join(extracted, path));
   const applied = run('compare-update', ...args);
   assert.equal(applied.status, 1, applied.stderr);
-  assert.equal(JSON.parse(applied.stdout).conflicts[0].matchesCandidate, true);
-  const recorded = run('record-baseline', ...args);
+  assert.deepEqual(JSON.parse(applied.stdout).conflicts, [
+    { path: guide, reason: 'local-edit', matchesCandidate: true },
+    ...added.map((path) => ({ path, reason: 'untracked-path', matchesCandidate: true })),
+  ]);
+  const unacknowledged = run('record-baseline', ...args);
+  assert.equal(unacknowledged.status, 1, unacknowledged.stderr);
+  assert.deepEqual(JSON.parse(unacknowledged.stderr).findings,
+    added.map((path) => ({ path, reason: 'new-path-unacknowledged' })));
+  const unknown = run('record-baseline', ...args, '--acknowledge-new-path', guide);
+  assert.equal(unknown.status, 2, unknown.stderr);
+  assert.equal(JSON.parse(unknown.stderr).code, 'INVALID_ACKNOWLEDGEMENT');
+  const recorded = run('record-baseline', ...args, ...added.flatMap((path) => ['--acknowledge-new-path', path]));
   assert.equal(recorded.status, 0, recorded.stderr);
   assert.equal(JSON.parse(recorded.stdout).version, '0.2.0');
   const corrupted = await readLock(candidateRoot);
@@ -145,7 +158,9 @@ test('retired_paths_may_be_replaced_by_the_candidate_file_or_directory_layout', 
   const formerDirectory = '.foundation/second';
   await changeManaged(projectRoot, { [formerFile]: '이전 파일', [formerDirectory + '/old.md']: '이전 하위 파일' });
   await changeManaged(candidateRoot, { [formerFile + '/new.md']: '새 하위 파일', [formerDirectory]: '새 파일' });
-  assert.deepEqual((await compareUpdate(input)).removed, [formerFile, formerDirectory + '/old.md']);
+  const initial = await compareUpdate(input);
+  assert.deepEqual(initial.removed, [formerFile, formerDirectory + '/old.md']);
+  assert.deepEqual(initial.conflicts, [{ path: formerDirectory, reason: 'local-path', matchesCandidate: false }]);
   await assert.rejects(recordBaseline(input), { code: 'BASELINE_CONFLICT' });
 
   await rm(join(projectRoot, formerFile));
@@ -156,7 +171,59 @@ test('retired_paths_may_be_replaced_by_the_candidate_file_or_directory_layout', 
   const report = await compareUpdate(input);
   assert.deepEqual(report.conflicts, [
     { path: formerFile, reason: 'local-path', matchesCandidate: true },
+    { path: formerFile + '/new.md', reason: 'untracked-path', matchesCandidate: true },
+    { path: formerDirectory, reason: 'untracked-path', matchesCandidate: true },
     { path: formerDirectory + '/old.md', reason: 'local-path', matchesCandidate: true },
   ]);
-  assert.equal((await recordBaseline(input)).version, '0.2.0');
+  const acknowledgeNewPaths = [formerFile + '/new.md', formerDirectory];
+  assert.equal((await recordBaseline({ ...input, acknowledgeNewPaths })).version, '0.2.0');
+});
+
+test('requires_explicit_acknowledgement_for_every_added_managed_path', async (t) => {
+  const input = await fixture(t);
+  const { candidateRoot, projectRoot } = input;
+  const preexisting = '.foundation/local-policy.md';
+  const installed = '.foundation/new.md';
+  const projectDoc = 'docs/project/profile.md';
+  await writeProjectFile(projectRoot, preexisting, '기존 지역 정책');
+  await writeProjectFile(projectRoot, projectDoc, '프로젝트 설정');
+  await changeManaged(candidateRoot, { [preexisting]: '기존 지역 정책', [installed]: '후보 파일' });
+  await copyFile(join(candidateRoot, installed), join(projectRoot, installed));
+  const before = await snapshot(projectRoot);
+
+  await assert.rejects(recordBaseline(input), (error) => {
+    assert.equal(error.code, 'BASELINE_CONFLICT');
+    assert.deepEqual(error.findings, [
+      { path: preexisting, reason: 'new-path-unacknowledged' },
+      { path: installed, reason: 'new-path-unacknowledged' },
+    ]);
+    return true;
+  });
+  await assert.rejects(recordBaseline({ ...input, acknowledgeNewPaths: [installed] }), (error) => {
+    assert.equal(error.code, 'BASELINE_CONFLICT');
+    assert.deepEqual(error.findings, [{ path: preexisting, reason: 'new-path-unacknowledged' }]);
+    return true;
+  });
+  for (const paths of [installed, [7], [guide], [projectDoc], ['.foundation/not-added.md'], [installed.toUpperCase()]]) {
+    await assert.rejects(recordBaseline({ ...input, acknowledgeNewPaths: paths }), {
+      code: 'INVALID_ACKNOWLEDGEMENT',
+    });
+  }
+  assert.deepEqual(await snapshot(projectRoot), before);
+  const acknowledged = { ...input, acknowledgeNewPaths: [preexisting, installed] };
+  await writeProjectFile(projectRoot, installed, '수정된 후보 파일');
+  await assert.rejects(recordBaseline(acknowledged), (error) => {
+    assert.equal(error.code, 'BASELINE_CONFLICT');
+    assert.deepEqual(error.findings, [{ path: installed, reason: 'candidate-mismatch' }]);
+    return true;
+  });
+  assert.equal((await snapshot(projectRoot))[lockName], before[lockName]);
+  await copyFile(join(candidateRoot, installed), join(projectRoot, installed));
+
+  assert.equal((await recordBaseline(acknowledged)).version, '0.2.0');
+  assert.deepEqual((await readLock(projectRoot)).managedFiles, (await readLock(candidateRoot)).managedFiles);
+  const after = await snapshot(projectRoot);
+  delete before[lockName];
+  delete after[lockName];
+  assert.deepEqual(after, before);
 });

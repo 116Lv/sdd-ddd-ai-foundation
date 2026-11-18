@@ -7,11 +7,24 @@ import { runUpdateCli } from './lib/update-cli.mjs';
 import { matchesCandidatePath, readUpdate, updateRoots, verifyUnchangedLock } from './lib/update-state.mjs';
 
 export async function recordBaseline(options) {
+  const { acknowledgeNewPaths = [] } = options ?? {};
+  if (!Array.isArray(acknowledgeNewPaths) || !acknowledgeNewPaths.every((path) => typeof path === 'string')) {
+    throw codedError('INVALID_ACKNOWLEDGEMENT', '승인할 신규 관리 경로를 문자열 배열로 지정하세요.');
+  }
+  const acknowledged = new Set(acknowledgeNewPaths);
   const roots = await updateRoots(options);
   return withConnectionGuard(connectionGuardPath(roots.projectDir), async () => {
     const { current, candidate, actual, connections } = await readUpdate(roots);
+    for (const path of acknowledged) {
+      if (!candidate.managed.has(path) || current.managed.has(path)) {
+        throw codedError('INVALID_ACKNOWLEDGEMENT', '후보에서 추가되는 관리 경로만 승인할 수 있습니다. ' + JSON.stringify(path));
+      }
+    }
+
     const findings = [];
     for (const path of actual.keys()) {
+      const added = candidate.managed.has(path) && !current.managed.has(path);
+      if (added && !acknowledged.has(path)) findings.push({ path, reason: 'new-path-unacknowledged' });
       const hash = candidate.managed.get(path);
       if (!matchesCandidatePath(path, actual, candidate)) {
         const reason = hash === undefined ? 'retired-path-present' : 'candidate-mismatch';
@@ -20,7 +33,7 @@ export async function recordBaseline(options) {
     }
     findings.push(...connections.refresh);
     if (findings.length) {
-      const error = codedError('BASELINE_CONFLICT', '후보 버전과 설치된 관리 파일 및 AI 연결 상태를 확인하세요.');
+      const error = codedError('BASELINE_CONFLICT', '신규 관리 경로의 승인, 설치된 관리 파일과 AI 연결 상태를 확인하세요.');
       error.findings = findings;
       throw error;
     }

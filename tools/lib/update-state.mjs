@@ -106,6 +106,17 @@ export function matchesHash(state, hash) {
   return hash === undefined ? state.kind === 'missing' : state.hash === hash;
 }
 
+export function hasMatchingFileAncestor(path, actual, managed) {
+  let end = path.lastIndexOf('/');
+  while (end > 0) {
+    const ancestor = path.slice(0, end);
+    const hash = managed.get(ancestor);
+    if (hash !== undefined) return matchesHash(actual.get(ancestor), hash);
+    end = ancestor.lastIndexOf('/');
+  }
+  return false;
+}
+
 export function matchesCandidatePath(path, actual, candidate) {
   const state = actual.get(path);
   if (matchesHash(state, candidate.managed.get(path))) return true;
@@ -116,16 +127,7 @@ export function matchesCandidatePath(path, actual, candidate) {
     const prefix = candidate.prefixes.get(path.normalize('NFC').toLowerCase());
     return prefix?.prefix === path && !prefix.isFile;
   }
-  if (state.kind === 'blocked-ancestor') {
-    let end = path.lastIndexOf('/');
-    while (end > 0) {
-      const ancestor = path.slice(0, end);
-      const hash = candidate.managed.get(ancestor);
-      if (hash !== undefined) return matchesHash(actual.get(ancestor), hash);
-      end = ancestor.lastIndexOf('/');
-    }
-  }
-  return false;
+  return state.kind === 'blocked-ancestor' && hasMatchingFileAncestor(path, actual, candidate.managed);
 }
 
 async function validateCandidateFiles(root, manifest, tools) {
