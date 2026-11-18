@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -146,6 +146,52 @@ test('ignores_code_fence_samples', async (t) => {
   assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
 });
 
+test('an_unmatched_backtick_does_not_hide_a_link_in_the_next_block', async (t) => {
+  const projectRoot = await change(t);
+  const tasks = changePath + 'tasks.md';
+  await appendFile(join(projectRoot, tasks), '\n\n문장의 닫히지 않은 `\n## 다음 항목\n[실제 링크](missing.md) `\n');
+  assert.deepEqual(locations(await checkProject({ projectRoot, changeName })), [['MISSING_LINK_TARGET', tasks]]);
+});
+
+test('fences_inside_comments_do_not_hide_subsequent_links', async (t) => {
+  const projectRoot = await change(t);
+  const proposal = changePath + 'proposal.md';
+  await appendFile(join(projectRoot, proposal), '\n\n<!--\n~~~markdown\n-->\n\n[실제 링크](missing.md)\n');
+  assert.deepEqual(locations(await checkProject({ projectRoot, changeName })), [['MISSING_LINK_TARGET', proposal]]);
+});
+
+test('ignores_links_in_indented_code_blocks', async (t) => {
+  const projectRoot = await change(t);
+  await appendFile(join(projectRoot, changePath + 'tasks.md'), '\n\n설명 문단\n\n    [예시](missing.md)\n');
+  assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
+});
+
+test('recognizes_links_after_an_escaped_exclamation_and_backticks_in_angle_destinations', async (t) => {
+  const projectRoot = await change(t);
+  const tasks = changePath + 'tasks.md';
+  await appendFile(join(projectRoot, tasks), '\n\n\\![실제 링크](first.md)\n[두 번째 링크](<file`name`.md>)\n');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.deepEqual(locations(result), [['MISSING_LINK_TARGET', tasks], ['MISSING_LINK_TARGET', tasks]]);
+  assert.match(result.findings[0].message, /first\.md/u);
+  assert.match(result.findings[1].message, /file`name`\.md/u);
+});
+
+test('keeps_links_after_code_blocks_that_contain_comment_markers', async (t) => {
+  const projectRoot = await change(t);
+  const proposal = changePath + 'proposal.md';
+  await appendFile(join(projectRoot, proposal), '\n\n~~~markdown\n<!--\n[예시](example.md)\n~~~\n\n[실제 링크](missing.md)\n');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.deepEqual(locations(result), [['MISSING_LINK_TARGET', proposal]]);
+  assert.match(result.findings[0].message, /missing\.md/u);
+});
+
+test('ignores_links_inside_image_alt_text', async (t) => {
+  const projectRoot = await change(t);
+  const tasks = changePath + 'tasks.md';
+  await appendFile(join(projectRoot, tasks), '\n\n![그림 설명 [예시](missing.md)](missing.png)\n');
+  assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
+});
+
 test('reports_external_file_references_without_following_symlinks', async (t) => {
   const projectRoot = await change(t);
   const dir = join(projectRoot, changePath);
@@ -161,6 +207,7 @@ test('reports_external_file_references_without_following_symlinks', async (t) =>
 test('spec_free_changes_require_explicit_skip_specs_for_the_selected_change', async (t) => {
   const projectRoot = await change(t);
   await rm(join(projectRoot, specPath));
+  await rmdir(dirname(join(projectRoot, specPath)));
   await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 문서 교정 (SETUP: 문서만 변경)\n');
   const result = await checkProject({ projectRoot, changeName });
   assert.deepEqual(locations(result), [['MISSING_SPECS', changePath + 'specs']]);
@@ -182,6 +229,28 @@ test('rejects_empty_specs_even_when_the_file_exists', async (t) => {
   await writeFile(join(projectRoot, specPath), '# 예약\n<!-- 시나리오 작성 예정 -->\n');
   await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 테스트 준비 (SETUP: 데이터 준비)\n');
   assert.deepEqual(locations(await checkProject({ projectRoot, changeName })), [['MISSING_SCENARIO', specPath]]);
+});
+
+test('reports_missing_leaf_specs_alongside_valid_namespaced_specs', async (t) => {
+  const projectRoot = await change(t);
+  const specs = join(projectRoot, changePath, 'specs');
+  await mkdir(join(specs, 'commerce'));
+  await rename(join(specs, 'reservations'), join(specs, 'commerce', 'reservations'));
+  await mkdir(join(specs, 'commerce', 'stock'));
+  assert.deepEqual(locations(await checkProject({ projectRoot, changeName })), [
+    ['MISSING_FILE', changePath + 'specs/commerce/stock/spec.md'],
+  ]);
+});
+
+test('finds_explicit_nested_specs_under_a_capability_and_ignores_support_folders', async (t) => {
+  const projectRoot = await change(t);
+  const capability = dirname(join(projectRoot, specPath));
+  await mkdir(join(capability, 'assets'));
+  await mkdir(join(capability, 'details'));
+  const spec = await readFile(join(projectRoot, specPath), 'utf8');
+  await writeFile(join(capability, 'details/spec.md'), spec.replace('AC-001', 'AC-003').replace('AC-002', 'AC-004'));
+  await appendFile(join(projectRoot, changePath + 'tasks.md'), '\n- [ ] 세부 동작 (AC: AC-003, AC-004)\n');
+  assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
 });
 
 test('exported_cli_runs_with_node_and_returns_documented_exit_statuses', async (t) => {

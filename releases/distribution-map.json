@@ -25,6 +25,21 @@
     "mode": "managed"
   },
   {
+    "source": "distribution/managed/checks/vendor/marked-LICENSE.md",
+    "target": ".foundation/checks/vendor/marked-LICENSE.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/checks/vendor/marked-PROVENANCE.md",
+    "target": ".foundation/checks/vendor/marked-PROVENANCE.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/checks/vendor/marked.mjs",
+    "target": ".foundation/checks/vendor/marked.mjs",
+    "mode": "managed"
+  },
+  {
     "source": "distribution/managed/guide.md",
     "target": ".foundation/guide.md",
     "mode": "managed"

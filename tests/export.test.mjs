@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs, { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { syncBuiltinESMExports } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -64,6 +64,9 @@ test('exports_only_declared_assets', async (t) => {
     '.foundation/checks/check-project.mjs',
     '.foundation/checks/cli.mjs',
     '.foundation/checks/markdown.mjs',
+    '.foundation/checks/vendor/marked-LICENSE.md',
+    '.foundation/checks/vendor/marked-PROVENANCE.md',
+    '.foundation/checks/vendor/marked.mjs',
     '.foundation/guide.md',
     '.foundation/integrations/claude/CLAUDE.md.template',
     '.foundation/integrations/tools.json',
@@ -92,6 +95,10 @@ test('exports_only_declared_assets', async (t) => {
   assert.match(await readFile(join(projectDir, 'AGENTS.md'), 'utf8'), /^# 봄 \$& \{\{OTHER\}\} 작업 지침/);
   const guide = await readFile(join(source, 'distribution', 'managed', 'guide.md'));
   assert.deepEqual(await readFile(join(projectDir, '.foundation', 'guide.md')), guide);
+  const markedRuntime = createRequire(import.meta.url).resolve('marked');
+  const markedLicense = join(dirname(markedRuntime), '..', 'LICENSE');
+  assert.deepEqual(await readFile(join(projectDir, '.foundation/checks/vendor/marked.mjs')), await readFile(markedRuntime));
+  assert.deepEqual(await readFile(join(projectDir, '.foundation/checks/vendor/marked-LICENSE.md')), await readFile(markedLicense));
   assert.equal(lock.schemaVersion, 1);
   assert.equal(lock.foundationVersion, version);
   assert.deepEqual(lock.compatibility, { openspec: '2.1.0' });

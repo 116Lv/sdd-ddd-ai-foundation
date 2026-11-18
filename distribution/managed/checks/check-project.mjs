@@ -1,6 +1,6 @@
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, posix, resolve } from 'node:path';
-import { fileLinkDestinations, hasContent, readMarkdown, sectionLines } from './markdown.mjs';
+import { fileLinkDestinations, hasContent, hasScenarioStep, readMarkdown, sectionBlocks, taskLabels } from './markdown.mjs';
 
 export const proposalHeadings = [
   ['Why', '목적'],
@@ -93,7 +93,7 @@ const linkMessages = {
 };
 
 async function checkLinks(root, source, markdown, report) {
-  for (const destination of fileLinkDestinations(markdown.text)) {
+  for (const destination of fileLinkDestinations(markdown)) {
     const { path, code } = linkPath(source, destination);
     if (code) {
       report(code, source, linkMessages[code] + destination);
@@ -121,7 +121,7 @@ function checkSections(path, markdown, required, report) {
     const headings = markdown.headings.filter(({ level, title }) => level === 2 && aliases.includes(title));
     if (!headings.length) {
       report('MISSING_SECTION', path, '필수 항목이 없습니다. ' + aliases.join(' / '));
-    } else if (!headings.some((heading) => hasContent(sectionLines(markdown, heading)))) {
+    } else if (!headings.some((heading) => hasContent(sectionBlocks(markdown, heading)))) {
       report('EMPTY_SECTION', path, '필수 항목의 내용이 비어 있습니다. ' + aliases.join(' / '));
     }
   }
@@ -133,7 +133,7 @@ async function checkStarter(root, report) {
     if (!markdown) continue;
     if (headings.length) {
       checkSections(path, markdown, headings.map((heading) => [heading]), report);
-    } else if (!hasContent(markdown.lines)) {
+    } else if (!hasContent(markdown.blocks)) {
       report('EMPTY_FILE', path, '문서 본문이 비어 있습니다.');
     }
   }
@@ -141,21 +141,32 @@ async function checkStarter(root, report) {
 
 async function specFiles(root, specsDir, report) {
   const directory = await projectEntry(root, specsDir);
+  const paths = [];
+  const missing = [];
   if (directory.stat?.isSymbolicLink()) {
     report('UNSAFE_PATH', specsDir, '심볼릭 링크는 검사 대상으로 읽을 수 없습니다.');
   }
-  if (!directory.stat?.isDirectory()) return [];
-  const capabilities = (await readdir(directory.absolute, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-    .map((entry) => entry.name).sort();
-  const files = [];
-  for (const name of capabilities) {
-    if (/[\\:]/u.test(name)) continue;
-    const path = specsDir + '/' + name + '/spec.md';
-    const { stat } = await projectEntry(root, path);
-    if (stat) files.push(path);
+  if (directory.stat?.isDirectory()) await scan(directory.absolute, specsDir, false);
+  return { paths, missing };
+
+  async function scan(absolute, relative, inCapability) {
+    const entries = await readdir(absolute, { withFileTypes: true });
+    const spec = relative !== specsDir && entries.some(({ name }) => name === 'spec.md');
+    const children = entries.filter((entry) => entry.name !== 'spec.md'
+      && (entry.isDirectory() || entry.isSymbolicLink())).sort((a, b) => a.name < b.name ? -1 : 1);
+    const specPath = relative + '/spec.md';
+    if (spec) paths.push(specPath);
+    else if (!inCapability && relative !== specsDir && !children.length) missing.push(specPath);
+
+    for (const entry of children) {
+      const path = relative + '/' + entry.name;
+      if (entry.isSymbolicLink()) {
+        if (!inCapability && !spec) report('UNSAFE_PATH', path, '심볼릭 링크는 검사 대상으로 읽을 수 없습니다.');
+      } else {
+        await scan(join(absolute, entry.name), path, inCapability || spec);
+      }
+    }
   }
-  return files;
 }
 
 async function canSkipSpecs(root, dir, report) {
@@ -168,9 +179,9 @@ async function canSkipSpecs(root, dir, report) {
 function checkScenarios(path, markdown, scenarios, report) {
   const headings = markdown.headings.filter(({ level, title }) => level === 4 && /^Scenario:\s*/u.test(title));
   if (!headings.length) report('MISSING_SCENARIO', path, 'OpenSpec Scenario 항목이 필요합니다.');
-  for (const heading of headings) {
+  for (const [index, heading] of headings.entries()) {
     const match = heading.title.match(/^Scenario:\s+\[(AC-[0-9]{3})\]\s+\S/u);
-    const location = (heading.index + 1) + '행';
+    const location = (index + 1) + '번째';
     if (!match) {
       report('MISSING_SCENARIO_AC', path, location + '의 시나리오 제목에 [AC-001] 형식의 ID와 이름이 필요합니다.');
     } else if (scenarios.has(match[1])) {
@@ -178,24 +189,22 @@ function checkScenarios(path, markdown, scenarios, report) {
     } else {
       scenarios.set(match[1], path);
     }
-    const body = sectionLines(markdown, heading);
-    const when = body.some((line) => /^\s*[-+*]\s+\*\*WHEN\*\*\s+\S/u.test(line));
-    const then = body.some((line) => /^\s*[-+*]\s+\*\*THEN\*\*\s+\S/u.test(line));
-    if (!when || !then) report('INCOMPLETE_SCENARIO', path, location + '의 시나리오에 WHEN 조건과 THEN 결과가 필요합니다.');
+    const body = sectionBlocks(markdown, heading);
+    if (!hasScenarioStep(body, 'WHEN') || !hasScenarioStep(body, 'THEN')) {
+      report('INCOMPLETE_SCENARIO', path, location + ' 시나리오에 WHEN 조건과 THEN 결과가 필요합니다.');
+    }
   }
 }
 
 function checkTasks(path, markdown, scenarios, report) {
   const referenced = new Set();
   let taskCount = 0;
-  for (const [index, line] of markdown.lines.entries()) {
-    const task = line.match(/^\s*[-*+]\s+\[[ xX]\](?:\s+|$)(.*)$/u);
-    if (!task) continue;
+  for (const task of taskLabels(markdown.blocks)) {
     taskCount++;
-    const location = (index + 1) + '행';
-    const markers = [...task[1].matchAll(/\(AC:\s*([^)]*)\)/gu)];
-    if (!markers.length && !/\(SETUP:\s*[^)\s][^)]*\)/u.test(task[1])) {
-      report('MISSING_TASK_AC', path, location + '의 작업에 (AC: AC-001) 또는 (SETUP: 사유)가 필요합니다.');
+    const location = taskCount + '번째 작업';
+    const markers = [...task.matchAll(/\(AC:\s*([^)]*)\)/gu)];
+    if (!markers.length && !/\(SETUP:\s*[^)\s][^)]*\)/u.test(task)) {
+      report('MISSING_TASK_AC', path, location + '에 (AC: AC-001) 또는 (SETUP: 사유)가 필요합니다.');
     }
     for (const [ , values] of markers) {
       const ids = values.split(',').map((id) => id.trim());
@@ -220,14 +229,17 @@ async function checkChange(root, changeName, report) {
   const proposal = dir + '/proposal.md';
   const tasks = dir + '/tasks.md';
   const specs = dir + '/specs';
-  const paths = await specFiles(root, specs, report);
+  const { paths, missing } = await specFiles(root, specs, report);
   const skipSpecs = !paths.length && await canSkipSpecs(root, dir, report);
   const plan = await readDocument(root, proposal, report);
   if (plan) {
     const required = skipSpecs ? proposalHeadings.filter(([native]) => native !== 'Capabilities') : proposalHeadings;
     checkSections(proposal, plan, required, report);
   }
-  if (!paths.length && !skipSpecs) report('MISSING_SPECS', specs, 'specs/<기능>/spec.md 파일이 필요합니다.');
+  if (!skipSpecs) {
+    for (const path of missing) report('MISSING_FILE', path, '기능 명세 파일이 필요합니다.');
+    if (!paths.length && !missing.length) report('MISSING_SPECS', specs, 'specs/<기능>/spec.md 파일이 필요합니다.');
+  }
   const scenarios = new Map();
   for (const path of paths) {
     const spec = await readDocument(root, path, report);
