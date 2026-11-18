@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import fs, { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { exportProject } from '../tools/export-project.mjs';
@@ -174,6 +175,35 @@ test('an_invalid_mapping_leaves_an_empty_target_intact', async (t) => {
     assert.deepEqual(await readdir(targetDir), []);
     assert.deepEqual((await readdir(dir)).sort(), ['project', 'source']);
   }
+});
+
+test('export_keeps_its_staging_write_error_when_cleanup_also_fails', async (t) => {
+  const dir = await scratch(t);
+  const targetDir = join(dir, 'project');
+  const writeError = Object.assign(new Error('staging write failed'), { code: 'ENOSPC' });
+  const writeMock = t.mock.method(fs, 'writeFile', async () => { throw writeError; });
+  const remove = fs.rm;
+  const rmMock = t.mock.method(fs, 'rm', async (path, options) => {
+    if (dirname(path) === dir && basename(path).startsWith('.foundation-stage-')) {
+      throw Object.assign(new Error('staging cleanup denied'), { code: 'EPERM' });
+    }
+    return remove(path, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    rmMock.mock.restore();
+    writeMock.mock.restore();
+    syncBuiltinESMExports();
+  });
+
+  await assert.rejects(exportTo(targetDir), (error) => {
+    assert.equal(error, writeError);
+    assert.equal(error.code, 'ENOSPC');
+    assert.equal(error.cleanupWarning.code, 'EPERM');
+    assert.equal(dirname(error.cleanupWarning.path), dir);
+    return true;
+  });
+  await assert.rejects(lstat(targetDir), { code: 'ENOENT' });
 });
 
 test('export_cli_help_and_json_use_documented_exit_statuses', async (t) => {

@@ -57,6 +57,19 @@ export async function inspectPath(absolute, { allowMissing = false } = {}) {
   return stat;
 }
 
+async function removeStagingDirectory(path) {
+  try {
+    await rm(path, { recursive: true, force: true });
+  } catch (error) {
+    const code = error.code ?? 'CLEANUP_FAILED';
+    return {
+      code,
+      path,
+      message: '임시 폴더를 정리할 수 없습니다. ' + path + ' [' + code + ']',
+    };
+  }
+}
+
 export async function withStagingDirectory(parent, action) {
   if (!(await inspectPath(parent, { allowMissing: true }))) {
     await mkdir(parent, { recursive: true });
@@ -69,9 +82,16 @@ export async function withStagingDirectory(parent, action) {
   if (dirname(resolvedStage) !== resolvedParent || !basename(resolvedStage).startsWith('.foundation-stage-')) {
     throw codedError('INVALID_PATH', '임시 폴더가 지정한 상위 경로에 없습니다. ' + stage);
   }
+  let result;
   try {
-    return await action(stage);
-  } finally {
-    await rm(resolvedStage, { recursive: true, force: true });
+    result = await action(stage);
+  } catch (error) {
+    const cleanupWarning = await removeStagingDirectory(resolvedStage);
+    if (cleanupWarning) error.cleanupWarning = cleanupWarning;
+    throw error;
   }
+
+  // 작업 결과가 게시되면 정리 실패도 성공 결과와 함께 반환한다.
+  const cleanupWarning = await removeStagingDirectory(resolvedStage);
+  return cleanupWarning ? { ...result, cleanupWarning } : result;
 }

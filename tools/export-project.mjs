@@ -132,7 +132,7 @@ export async function exportProject(options) {
   const files = await loadFiles(sourceDir, projectName);
   const lock = createFoundationLock(version, files);
 
-  await withStagingDirectory(dirname(projectDir), async (stage) => {
+  return withStagingDirectory(dirname(projectDir), async (stage) => {
     for (const { targetParts, bytes } of files) {
       const path = join(stage, ...targetParts);
       await mkdir(dirname(path), { recursive: true });
@@ -140,8 +140,8 @@ export async function exportProject(options) {
     }
     await writeFile(join(stage, lockName), JSON.stringify(lock, null, 2) + '\n', { flag: 'wx' });
     await publishProject(stage, projectDir);
+    return { projectDir, lock };
   });
-  return { projectDir, lock };
 }
 
 async function main() {
@@ -167,9 +167,15 @@ async function main() {
       version: values.version,
     });
     console.log(values.json ? JSON.stringify(result) : result.projectDir);
+    if (!values.json && result.cleanupWarning) console.error(result.cleanupWarning.message);
   } catch (error) {
-    const { code, message } = error;
-    console.error(process.argv.includes('--json') ? JSON.stringify({ code, message }) : '[' + code + '] ' + message);
+    const { code, message, cleanupWarning } = error;
+    if (process.argv.includes('--json')) {
+      console.error(JSON.stringify({ code, message, cleanupWarning }));
+    } else {
+      console.error('[' + code + '] ' + message);
+      if (cleanupWarning) console.error(cleanupWarning.message);
+    }
     process.exitCode = 2;
   }
 }

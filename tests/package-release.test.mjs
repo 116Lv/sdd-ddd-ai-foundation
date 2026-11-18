@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import fs, { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { exportProject } from '../tools/export-project.mjs';
@@ -50,6 +51,38 @@ test('zip_keeps_hidden_and_korean_paths', async (t) => {
   assert.equal(repeat.sha256, result.sha256);
 });
 
+test('published_zip_returns_its_result_when_staging_cleanup_fails', async (t) => {
+  const dir = await scratch(t);
+  const projectDir = join(dir, 'project');
+  const zipPath = join(dir, 'release.zip');
+  await mkdir(projectDir);
+  await writeFile(join(projectDir, 'README.md'), 'pack');
+
+  const remove = fs.rm;
+  const rmMock = t.mock.method(fs, 'rm', async (path, options) => {
+    if (dirname(path) === dir && basename(path).startsWith('.foundation-stage-')) {
+      throw Object.assign(new Error('staging cleanup denied'), { code: 'EPERM' });
+    }
+    return remove(path, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    rmMock.mock.restore();
+    syncBuiltinESMExports();
+  });
+
+  const result = await packageRelease({ projectDir, zipPath });
+  const bytes = await readFile(zipPath);
+  const { unzipSync } = await import('fflate');
+  assert.equal(Buffer.from(unzipSync(bytes)['README.md']).toString('utf8'), 'pack');
+  assert.equal(result.zipPath, zipPath);
+  assert.equal(result.sha256, createHash('sha256').update(bytes).digest('hex'));
+  assert.equal(result.fileCount, 1);
+  assert.equal(result.cleanupWarning.code, 'EPERM');
+  assert.equal(dirname(result.cleanupWarning.path), dir);
+  assert.ok((await lstat(result.cleanupWarning.path)).isDirectory());
+});
+
 test('existing_zip_paths_are_preserved', async (t) => {
   const dir = await scratch(t);
   const projectDir = join(dir, 'project');
@@ -91,6 +124,8 @@ test('package_cli_help_and_json_use_documented_exit_statuses', async (t) => {
   const help = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8' });
   assert.equal(help.status, 0);
   assert.match(help.stdout, /--zip-path/);
+  assert.match(help.stdout, /모든 파일/);
+  assert.match(help.stdout, /export-project\.mjs/);
   const command = [cli, '--project-dir', projectDir, '--zip-path', zipPath, '--json'];
   const created = spawnSync(process.execPath, command, { encoding: 'utf8' });
   assert.equal(created.status, 0, created.stderr);

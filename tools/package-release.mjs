@@ -59,7 +59,8 @@ export async function packageRelease(options) {
   const files = await collectFiles(project);
   const bytes = buildZip(files);
 
-  await withStagingDirectory(dirname(output), async (stage) => {
+  const result = { zipPath: output, sha256: sha256(bytes), fileCount: files.length };
+  return withStagingDirectory(dirname(output), async (stage) => {
     const stagedZip = join(stage, 'release.zip');
     await writeFile(stagedZip, bytes, { flag: 'wx' });
     try {
@@ -71,9 +72,8 @@ export async function packageRelease(options) {
       }
       throw error;
     }
+    return result;
   });
-
-  return { zipPath: output, sha256: sha256(bytes), fileCount: files.length };
 }
 
 async function main() {
@@ -88,6 +88,7 @@ async function main() {
     });
     if (values.help) {
       console.log('사용법: node tools/package-release.mjs --project-dir <폴더> --zip-path <파일> [--json]');
+      console.log('지정한 폴더의 모든 파일을 압축합니다. export-project.mjs로 새로 내보낸 폴더를 지정하세요.');
       return;
     }
     const result = await packageRelease({
@@ -95,9 +96,15 @@ async function main() {
       zipPath: values['zip-path'],
     });
     console.log(values.json ? JSON.stringify(result) : result.zipPath);
+    if (!values.json && result.cleanupWarning) console.error(result.cleanupWarning.message);
   } catch (error) {
-    const { code, message } = error;
-    console.error(process.argv.includes('--json') ? JSON.stringify({ code, message }) : '[' + code + '] ' + message);
+    const { code, message, cleanupWarning } = error;
+    if (process.argv.includes('--json')) {
+      console.error(JSON.stringify({ code, message, cleanupWarning }));
+    } else {
+      console.error('[' + code + '] ' + message);
+      if (cleanupWarning) console.error(cleanupWarning.message);
+    }
     process.exitCode = 2;
   }
 }
