@@ -1,20 +1,20 @@
 # SDD 개발 기반 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 다중 에이전트 실행을 선택하면 superpowers:subagent-driven-development를 적용한다.
+> 실행 방식은 작업별 별도 구현자와 독립 검토를 둔 subagent-driven-development다. 아래 작업 목록은 제작 당시의 계획이며 실제 수행 범위와 결과는 [첫 버전 검증 기록](verification/first-release.md)에 둔다.
 
 **Goal:** DDD를 반영한 기획·설계를 SDD 개발·검증으로 연결하고, 사람과 AI가 바뀌어도 공통 기준을 유지하는 재사용 기반의 첫 버전을 제작한다.
 
 **Architecture:** 솔루션 제작 자료와 배포할 구성을 분리한다. 새 프로젝트에 전달한 공통 파일, 프로젝트가 작성한 내용, AI 도구가 생성한 파일의 소유권을 구분한다. OpenSpec의 기본 기능 개발 절차를 사용하고 명세·설계 검토와 완료 검토 스킬만 추가한다.
 
-**Tech Stack:** Markdown, OpenSpec, 관리용 Node.js ES modules·내장 테스트 러너. 제품 언어·프레임워크·배포 기술은 지정하지 않는다. 내보내기 도구의 ZIP 생성에만 fflate를 사용한다.
+**Tech Stack:** Markdown, OpenSpec, 관리용 Node.js ES modules·내장 테스트 러너. 제품 언어·프레임워크·배포 기술은 지정하지 않는다. ZIP 생성에는 fflate, 문서 문법 해석에는 고정 버전 marked의 lexer를 사용한다. 파서는 검사 도구에 라이선스와 함께 포함해 제품 프로젝트의 npm 설치를 요구하지 않는다.
 
 **Spec:** [요구사항 v0.2](requirements.md), [구조 설계 v0.2](design.md).
 
-- 계획 상태: 제작 전 — 모든 작업 미실행
+- 계획 상태: 첫 버전 제작·검증에 적용한 계획
 - 작성일: 2026-11-18
 - 성격: 솔루션 제작용 작업 계획. 파생 프로젝트의 기본 입력에서 제외한다.
-- 현황: 이 채팅 환경에서 Node.js v24.14.0과 Git 실행을 확인했다. OpenSpec·의존성 설치나 실제 프로젝트 생성·배포 검증은 아직 하지 않았다.
-- 경로 기준: 아래 파일 경로는 향후 솔루션 원본 루트를 기준으로 한다. 로컬 제작 위치는 `outputs/sdd-foundation/`을 제안하며 GitHub 저장소 이름과는 별개다.
+- 현황: 기반 도구와 OpenSpec 연결을 Windows에서 검증했다. 제품 구현·배포는 제작 범위 밖이다.
+- 경로 기준: 아래 경로는 솔루션 원본 저장소 루트를 기준으로 한다.
 
 ## Global Constraints
 
@@ -60,7 +60,7 @@
 
 ### 1.2 초기 생성 문서
 
-초기에는 `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/project/profile.md`, `docs/product/brief.md`, `docs/domain/glossary.md`를 생성한다. 문서 이름·링크는 다음 작업에서도 동일하게 사용한다. 실제 값은 프로젝트가 채우며 기술 미정은 `미정`으로 표시한다.
+초기에는 프로젝트 소유 `.gitattributes`, `.github/PULL_REQUEST_TEMPLATE.md`와 `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/project/profile.md`, `docs/product/brief.md`, `docs/domain/glossary.md`를 생성한다. 문서 이름·링크는 다음 작업에서도 동일하게 사용한다. 실제 값은 프로젝트가 채우며 기술 미정은 `미정`으로 표시한다.
 
 도메인 규칙·경계·상태, ADR, 운영 안내, 검증 기록은 `.foundation/templates/`의 양식을 사용해 필요할 때 생성한다. API 계약·애플리케이션 폴더는 생성하지 않는다.
 
@@ -87,7 +87,7 @@ compareUpdate({ projectRoot, candidateRoot })
   // candidateRoot: 신규 버전 내보내기 결과; -> { fromVersion, toVersion, added,
   // changed, removed, conflicts, connectionRefresh, manualActions }
 // tools/record-baseline.mjs
-recordBaseline({ projectRoot, candidateRoot })
+recordBaseline({ projectRoot, candidateRoot, acknowledgeNewPaths = [] })
   // -> { version, lockPath }; 신규 관리 파일과의 일치를 확인하고 lock만 갱신
 ```
 
@@ -181,6 +181,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 **Files**
 - Create: `integrations/tools.json`, `integrations/claude/CLAUDE.md.template`, `integrations/README.md`.
 - Create: `tools/connect-tools.mjs`, `tests/connect-tools.test.mjs`.
+- Modify: `releases/distribution-map.json` and export tests when the declared asset set expands.
 
 **Interfaces**
 - Consumes: 내보낸 `.foundation/skills/*/SKILL.md.template`, 기존 lock.
@@ -191,6 +192,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 - [ ] 검증 대상으로 삼는 공식 문서의 경로를 확인해 도구별 매핑을 고정한다. 초기 연결안은 Codex·Cursor에 `.agents/skills/foundation-*/SKILL.md`, Claude에 추가로 `.claude/skills/foundation-*/SKILL.md`와 `CLAUDE.md`의 `@AGENTS.md`를 사용한다.
 - [ ] 플랫폼별 링크 권한 차이를 줄이기 위해 첫 버전은 생성 복사본을 사용한다. 공통 원본의 상대 링크는 생성 위치에서 동일 원본을 가리키도록 렌더링하고, 제품 규칙 본문을 복제하지 않는다.
 - [ ] 모든 쓰기 대상을 사전 검사한다. 미소유 기존 파일, 지역 수정, 심볼릭 링크가 있으면 해당 실행 전체를 중단한다. 기존 파일이 lock의 이전 생성 해시와 일치하면 새 공통 원본으로 갱신할 수 있다. 기존 OpenSpec 스킬·사용자 규칙을 유지한다.
+- [ ] ZIP만 받은 사용자도 연결할 수 있도록 connector와 필요한 Node 내장 모듈 전용 로컬 의존 파일을 명시적으로 `.foundation/tools/`에 전달한다. source 도구와 동일한 상대 모듈 배치를 유지하고, 내보낸 도구로 연결하는 smoke test를 추가한다. OpenSpec 내장 스킬·AI 메타데이터는 원본에서 복사하지 않는다.
 - [ ] 실제 AI 세션을 실행하지 않은 도구는 `파일 생성 검증 완료 / 실제 세션 미검증`으로 기록한다. 파일 생성만으로 지원 완료 표시를 하지 않는다.
 - [ ] 지정 테스트를 실행하고 commit한다.
 
@@ -201,6 +203,8 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 **Files**
 - Create under `distribution/managed/checks/`: `check-project.mjs`, `cli.mjs`, `markdown.mjs`.
 - Create: `tests/check-project.test.mjs`, `tests/fixtures/checks/`.
+- Create: `distribution/managed/checks/vendor/`의 고정 marked 18.2.1 공식 ESM·MIT 라이선스·버전/출처 기록. Modify: source `package.json`, `package-lock.json`.
+- Modify: `releases/distribution-map.json` to include the checker runtime; update affected export assertions.
 
 **Interfaces**
 - Consumes: 프로젝트 문서, Task 2의 AC 표기, Task 3의 파일 소유 정보.
@@ -208,7 +212,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 
 - [ ] `valid_starter_passes`, `empty_required_section_fails`, `missing_internal_file_fails`, `korean_encoded_path_resolves`, `duplicate_ac_fails`, `unknown_task_ac_fails`, `ignores_code_fence_samples`를 테스트한다.
 - [ ] `node --test tests/check-project.test.mjs`가 실패하는지 확인한다.
-- [ ] 검사 대상과 링크 문법을 제한해 구현한다. 첫 버전은 코드 블록·코드 span 밖의 inline Markdown 파일 링크만 검사하며 URL·앵커·reference-style 링크는 검사 범위 밖으로 명시한다. 프로젝트 밖 링크는 외부 의존 참조로 보고하고 자동으로 읽지 않는다.
+- [ ] 고정 marked lexer로 블록·inline 문맥을 구분하고, 검사 대상 링크 문법을 제한한다. 코드·HTML 주석이 실제 링크나 제목을 삼키거나, 코드 예시의 가짜 링크를 검출하지 않게 회귀 검증한다. 첫 버전은 inline Markdown 파일 링크를 검사하고 URL·앵커·reference-style 링크 등 추가 범위는 문서로 명시한다. 프로젝트 밖 링크는 외부 의존 참조로 보고하고 자동으로 읽지 않는다.
 - [ ] starter 모드는 필수 파일·기본 항목과 해당 파일의 링크를 검사한다. 미정 값을 허용하되 채워진 실행 환경으로 표시하지 않는다. change 모드는 `--change <이름>`으로 해당 proposal·specs·tasks의 누락·중복 AC·끊긴 참조만 검사한다.
 - [ ] 설계 필수 입력은 `proposal.md`의 목적·포함 범위·제외 범위·행위자/권한·미정 사항과 specs의 정상/실패 시나리오다. 정확한 heading 대응은 fixture와 설정에 명시한다. OpenSpec 자체 문법 검사는 다음 작업에서 공식 CLI로 별도 수행한다.
 - [ ] 일반 문서 양식의 길이나 코드 품질을 판정하지 않으며 검사를 통과했다고 업무 규칙이 옳다고 주장하지 않는다.
@@ -221,6 +225,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 **Files**
 - Create: `tools/compare-update.mjs`, `tools/record-baseline.mjs`, `tests/compare-update.test.mjs`, `tests/record-baseline.test.mjs`.
 - Create: `distribution/managed/updating.md`, `releases/0.1.0.md`, `CHANGELOG.md`.
+- Modify: `releases/distribution-map.json` to include `.foundation/tools/` update comparison/baseline runtime and needed local modules; update affected export assertions.
 
 **Interfaces**
 - Consumes: 프로젝트 lock, 실제 관리 파일, 신규 버전 내보내기 결과.
@@ -231,6 +236,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 - [ ] 이전 기준과 실제 파일의 차이는 conflict로, 이전·신규 배포물 차이는 added/changed/removed로 구분한다. 현재 파일과 신규 배포물이 같은 경우도 결정적으로 보고한다.
 - [ ] 직접 수정한 연결 파일을 덮어쓰지 않도록 `connectionRefresh`에 경로·이유를 보고한다. lock에 없는 파일을 삭제 대상으로 추정하지 않는다.
 - [ ] 수동 적용 후 `recordBaseline`은 신규 관리 파일의 일치와 기존 연결 상태의 정합성을 확인한다. 필요한 연결 갱신이 남아 있으면 버전을 확정하지 않는다. 검증 실행 결과는 별도로 기록하도록 안내한다.
+- [ ] 새로 관리할 경로는 바이트 일치만으로 소유권을 추정하지 않는다. `acknowledgeNewPaths`와 CLI의 반복 가능한 `--acknowledge-new-path`로 정확한 신규 경로를 명시하게 하고, 미승인·잘못된 경로·내용 불일치 시 기준 파일을 보존한다. 비교는 기존 미소유 동일 내용 파일도 충돌과 `matchesCandidate`로 보고한다.
 - [ ] 별도 변경 단위 적용·검증·버전 기록·Git 변경 되돌리기로 복구하는 안내를 작성한다. 새 starter 양식은 기존 제품 문서에 덮어쓰지 않고 수동 비교 대상으로 안내한다.
 - [ ] 지정 테스트를 실행하고 commit한다.
 
@@ -243,7 +249,10 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 - Create: `examples/reservation-cancellation/README.md`, `docs/`, `openspec/`와 `verification.md`.
 - Create: `examples/profiles/java-vm.md`, `python-container.md`.
 - Create: `tests/journey.test.mjs`, `tests/openspec-compatibility.test.mjs`, `maintainer/verification/first-release.md`.
+- Create: `distribution/starter/.github/PULL_REQUEST_TEMPLATE.md.template` for spec/AC/evidence/remaining-issue submissions, and source-only `.github/workflows/foundation-ci.yml` for the foundation management tools' tests. No product build/deploy workflow is exported.
+- Create: `distribution/starter/.gitattributes.template` with byte-preservation scoped to foundation-managed files and foundation-generated connection paths; no blanket product-code line-ending policy. Verify a fresh Git clone with `core.autocrlf=true` retains recorded managed/connection hashes.
 - Modify: `README.md`, `distribution/managed/workflow.md`, `integrations/README.md`, `package.json`, `package-lock.json`.
+- Modify: `releases/distribution-map.json` for new setup/config assets and `maintainer/implementation-plan.md` to reflect controller rulings and selected subagent execution.
 
 **Interfaces**
 - Consumes: Task 1~6 결과, OpenSpec 2.1.0의 spec-driven 절차.
@@ -258,6 +267,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 - [ ] 문서 검사 통과와 별개로, 한 실제 AI 세션에서 명세·설계 검토 스킬 실행과 공통 결과 형식을 확인한다. 기능이 없는 환경에서는 미검증으로 남긴다. 다른 도구는 생성 파일 검사와 세션 실행 상태를 분리한다.
 - [ ] 서로 다른 기술·배포 profile 두 예시가 공통 양식을 수정하지 않고 기술 선택을 표현하는지 검토한다. 실제 Java·Python 제품 코드를 구현하지 않는다.
 - [ ] 시범 완료 기록에 AC-01~10 각각의 충족·미충족·미검증과 증거를 기재한다. 작은 기반 도구의 전체 단위 테스트를 한 번 실행하고 새 실패가 없으면 불필요하게 반복하지 않는다.
+- [ ] 기반 자체의 CI는 lockfile 기반 설치·관리 도구 테스트·문서 검사만 실행한다. Windows와 Linux, 선언한 최소 Node 버전과 검증된 현재 Node 버전을 적절히 확인한다. GitHub 실행 전에는 CI 성공을 주장하지 않는다. PR 양식은 프로젝트별 기술 명령을 고정하지 않고 명세·AC·실행 증거·미검증 항목을 연결한다.
 - [ ] Task 7 변경을 검토하고 commit한다.
 
 **완료 결과:** 새 사용자가 문서만 보고 시작할 수 있고 기능 명세·DDD 설계·작업·검증을 연결할 수 있다. AC-01~10 전체.
@@ -276,9 +286,9 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 
 ## 3. 실행·공개 범위
 
-이 계획은 실제 파일 제작까지의 범위다. GitHub 저장소 생성은 사용자에게 이름·소유자·공개 범위·라이선스를 확인한 뒤 수행한다. 릴리스 업로드는 로컬 ZIP과 검증 기록이 준비된 뒤 진행하며, 저장소 생성만으로 공개 릴리스 완료를 주장하지 않는다.
+개인 계정 116Lv의 비공개 저장소 sdd-ddd-ai-foundation에서 개발한다. 로컬 제작, GitHub CI, 릴리스 게시와 공개 전환은 각각 실제 수행 결과를 확인한다. 라이선스는 미정이다.
 
-실행 방식은 이 채팅에서 순차 제작하는 방식을 추천한다. 양식·스킬·내보내기·검사가 서로의 파일 형식에 의존하고 초기 제품 위험이 낮아, 작업마다 새 구현 에이전트를 만들기보다 같은 구현자가 맥락을 유지하는 편이 적합하다. 실제 스킬 평가와 최종 독립 검토는 검증 범위에 맞게 별도로 수행한다.
+작업마다 별도 구현자가 지정된 범위를 맡고, 컨트롤러가 인터페이스 의존성을 확인한 뒤 독립 검토와 수정을 조율한다. 확정한 기술 결정과 제한은 [첫 버전 검증 기록](verification/first-release.md)에 보존한다.
 
 ## 4. 계획 자체 점검
 
@@ -286,7 +296,7 @@ CLI는 각각 `node tools/<도구>.mjs`로 실행하고 `--help`를 제공한다
 - 경로·기존 파일 보존, Windows 경로·숨김 파일, 지역 수정, 빈 명세·미검증 오인, AI 지원 범위 과장의 위험을 각 관련 작업에서 확인한다.
 - 위 함수·반환값·파일명·AC 표기를 후속 작업의 공통 인터페이스로 사용한다.
 - 자동 검사는 구조 일부만, 스킬은 검토 절차만, 실제 코드·도구 동작은 실행 검증으로 확인한다.
-- 작업 체크박스는 모두 미실행 상태로 남긴다. 이 계획 문서 작성은 위 구현·테스트를 수행한 증거가 아니다.
+- 아래 참고 자료와 위 작업 목록은 설계 입력이다. 구현·검증 상태는 커밋과 첫 버전 검증 기록에서 확인한다.
 
 ## 참고 근거
 

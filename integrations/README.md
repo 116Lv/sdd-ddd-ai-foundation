@@ -11,9 +11,11 @@ node .foundation/tools/connect-tools.mjs --tool claude --json
 
 | 도구 | 공통 지침 | 프로젝트 스킬 경로 | 확인 상태 |
 | --- | --- | --- | --- |
-| Codex | 루트 `AGENTS.md` | `.agents/skills/foundation-*/SKILL.md` | 파일 생성 검증 완료 / 실제 세션 미검증 |
+| Codex | 루트 `AGENTS.md` | `.agents/skills/foundation-*/SKILL.md` | 파일 생성, CLI의 명시 호출·발췌본 완료 검토 확인. 최종 예시 로컬 문서 읽기·자동 호출 미검증 |
 | Claude Code | 루트 `CLAUDE.md`의 `@AGENTS.md` 가져오기 | `.claude/skills/foundation-*/SKILL.md` | 파일 생성 검증 완료 / 실제 세션 미검증 |
 | Cursor | 루트 `AGENTS.md` | `.agents/skills/foundation-*/SKILL.md` | 파일 생성 검증 완료 / 실제 세션 미검증 |
+
+환경·호출 방식과 실제 응답 범위는 [첫 버전 검증 기록](../maintainer/verification/first-release.md)에 있다.
 
 - Codex 공식 문서의 [스킬 경로](https://learn.chatgpt.com/docs/build-skills)와 [프로젝트 지침](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - Claude Code 공식 문서의 [스킬 경로](https://code.claude.com/docs/en/skills)와 [지침 가져오기](https://code.claude.com/docs/en/memory)

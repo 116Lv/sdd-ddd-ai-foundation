@@ -1,0 +1,8 @@
+# 기반 관리 파일과 연결기가 기록하는 경로의 원본 바이트를 유지합니다.
+/.foundation/** -text
+/foundation.lock.json -text
+/CLAUDE.md -text
+/.agents/skills/foundation-completion-review/SKILL.md -text
+/.agents/skills/foundation-spec-review/SKILL.md -text
+/.claude/skills/foundation-completion-review/SKILL.md -text
+/.claude/skills/foundation-spec-review/SKILL.md -text

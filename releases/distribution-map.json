@@ -40,8 +40,18 @@
     "mode": "managed"
   },
   {
+    "source": "distribution/managed/getting-started.md",
+    "target": ".foundation/getting-started.md",
+    "mode": "managed"
+  },
+  {
     "source": "distribution/managed/guide.md",
     "target": ".foundation/guide.md",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/openspec-rules.yaml",
+    "target": ".foundation/openspec-rules.yaml",
     "mode": "managed"
   },
   {
@@ -143,6 +153,16 @@
     "source": "tools/record-baseline.mjs",
     "target": ".foundation/tools/record-baseline.mjs",
     "mode": "managed"
+  },
+  {
+    "source": "distribution/starter/.gitattributes.template",
+    "target": ".gitattributes",
+    "mode": "starter"
+  },
+  {
+    "source": "distribution/starter/.github/PULL_REQUEST_TEMPLATE.md.template",
+    "target": ".github/PULL_REQUEST_TEMPLATE.md",
+    "mode": "starter"
   },
   {
     "source": "distribution/starter/AGENTS.md.template",

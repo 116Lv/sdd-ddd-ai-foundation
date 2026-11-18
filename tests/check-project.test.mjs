@@ -55,12 +55,11 @@ test('valid_starter_passes', async (t) => {
   const projectRoot = await starter(t);
   const profile = join(projectRoot, 'docs/project/profile.md');
   const before = await readFile(profile);
+  const entries = (await readdir(projectRoot)).sort();
   assert.match(before.toString('utf8'), /미정/u);
   assert.deepEqual(await checkProject({ projectRoot }), { status: 'pass', findings: [] });
   assert.deepEqual(await readFile(profile), before);
-  assert.deepEqual((await readdir(projectRoot)).sort(), [
-    '.foundation', 'AGENTS.md', 'CONTRIBUTING.md', 'README.md', 'docs', 'foundation.lock.json',
-  ]);
+  assert.deepEqual((await readdir(projectRoot)).sort(), entries);
 });
 
 test('empty_required_section_fails', async (t) => {

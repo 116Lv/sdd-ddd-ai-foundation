@@ -1,6 +1,6 @@
 # 변경 검증 기록 양식
 
-인수 조건마다 확인한 동작과 근거를 남긴다. PR·CI에 연결하거나 PR을 쓰지 않는 경우 `openspec/changes/<변경 이름>/verification.md`로 복사한다. 복사한 위치에 맞게 링크를 조정한다. [변경 절차](../workflow.md), [완료 체크리스트](../checklists/completion.md), [프로젝트 설정](../../docs/project/profile.md)을 참조한다.
+인수 조건마다 확인한 동작과 근거를 남긴다. PR·CI에 연결하거나 PR을 쓰지 않는 경우 `openspec/changes/<변경 이름>/verification.md`로 복사한다. 프로젝트 루트 기준 `.foundation/workflow.md`, `.foundation/checklists/completion.md`, `docs/project/profile.md`를 참조한다.
 
 ## 필수
 
