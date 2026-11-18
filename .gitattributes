@@ -1,3 +1,13 @@
+# 기반 소스의 배포 입력은 Git 설정에 관계없이 LF로 체크아웃한다.
+/distribution/managed/**/*.md text eol=lf
+/distribution/managed/**/*.mjs text eol=lf
+/distribution/managed/**/*.yaml text eol=lf
+/distribution/managed/**/*.template text eol=lf
+/distribution/starter/**/*.template text eol=lf
+/integrations/claude/CLAUDE.md.template text eol=lf
+/integrations/tools.json text eol=lf
+/tools/*.mjs text eol=lf
+/tools/lib/*.mjs text eol=lf
 # npm 배포본의 원래 바이트와 SHA-256을 유지한다.
-/distribution/managed/checks/vendor/marked.mjs -text
-/distribution/managed/checks/vendor/marked-LICENSE.md -text
+/distribution/managed/checks/vendor/marked.mjs -text !eol
+/distribution/managed/checks/vendor/marked-LICENSE.md -text !eol

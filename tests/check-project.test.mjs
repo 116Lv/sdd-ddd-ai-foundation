@@ -207,7 +207,7 @@ test('spec_free_changes_require_explicit_skip_specs_for_the_selected_change', as
   const projectRoot = await change(t);
   await rm(join(projectRoot, specPath));
   await rmdir(dirname(join(projectRoot, specPath)));
-  await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 문서 교정 (SETUP: 문서만 변경)\n');
+  await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 입력 사본 준비 (SETUP: 검증 자료 준비)\n');
   const result = await checkProject({ projectRoot, changeName });
   assert.deepEqual(locations(result), [['MISSING_SPECS', changePath + 'specs']]);
   await writeFile(join(projectRoot, '.openspec.yaml'), 'skip_specs: true\n');
@@ -220,6 +220,7 @@ test('spec_free_changes_require_explicit_skip_specs_for_the_selected_change', as
   assert.equal((await checkProject({ projectRoot, changeName })).status, 'fail');
   await writeFile(config, 'schema: spec-driven\nskip_specs: true # documentation only\n');
   await replace(projectRoot, changePath + 'proposal.md', '## Capabilities\n\n- `reservations`\n\n', '');
+  await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 문서의 명령 예시를 실행한다 (CHANGE: reserve-product)\n');
   assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
 });
 
@@ -273,4 +274,22 @@ test('exported_cli_runs_with_node_and_returns_documented_exit_statuses', async (
 
 test('api_errors_for_a_missing_project_root_use_a_stable_code', async () => {
   await assert.rejects(checkProject(null), { code: 'INVALID_PROJECT_ROOT' });
+});
+
+test('mixed_deltas_require_each_added_and_modified_requirement_to_have_traced_scenarios', async t => {
+  const projectRoot = await change(t);
+  const path = join(projectRoot, specPath);
+  const valid = await readFile(path, 'utf8');
+  const renamed = '## RENAMED Requirements\n- FROM: `### Requirement: 이전 이름`\n- TO: `### Requirement: 새 이름`\n';
+  for (const op of ['ADDED', 'MODIFIED']) {
+    await writeFile(path, [renamed, valid, '## ' + op + ' Requirements', '### Requirement: 추가 검사', '사용자는 확인해야 한다 (MUST).'].join('\n\n'));
+    const result = await checkProject({ projectRoot, changeName });
+    assert.deepEqual(locations(result), [['MISSING_SCENARIO', specPath]]);
+    assert.match(result.findings[0].message, /추가 검사/u);
+  }
+  await writeFile(path, renamed + '\n' + valid);
+  await writeFile(join(projectRoot, changePath + 'tasks.md'),
+    '- [ ] 시나리오 구현 (CHANGE: reserve-product)\n- [ ] 재고가 없을 때 검증 (AC: AC-002)\n');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.ok(result.findings.some(({ code, message }) => code === 'UNTRACED_AC' && message.includes('AC-001')));
 });

@@ -5,6 +5,10 @@ import { codedError } from './paths.mjs';
 
 export const lockName = 'foundation.lock.json';
 
+export function validVersion(value) {
+  return typeof value === 'string' && /\S/u.test(value) && !/[\p{Cc}\u2028\u2029]/u.test(value);
+}
+
 export function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }

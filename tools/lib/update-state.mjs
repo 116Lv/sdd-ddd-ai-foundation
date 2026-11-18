@@ -1,10 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { adapterPath, connectionTargets, isConnectionTarget, isRecord, supportedTools, validateAdapter } from './connection-config.mjs';
-import { lockName, sha256 } from './lock.mjs';
+import { lockName, sha256, validVersion } from './lock.mjs';
 import { absolutePath, codedError, inspectPath, pathParts } from './paths.mjs';
 
-const versionPattern = /[^\s]/u;
 const hashPattern = /^[a-f0-9]{64}$/u;
 
 export async function updateRoots(options) {
@@ -45,10 +44,6 @@ function managedPath(path, prefixes, code) {
   }
 }
 
-function validVersion(value) {
-  return typeof value === 'string' && versionPattern.test(value) && !/[\x00-\x1f\x7f]/u.test(value);
-}
-
 async function readManifest(root, code) {
   const lockPath = join(root, lockName);
   const state = await fileState(lockPath);
@@ -86,10 +81,19 @@ async function readManifest(root, code) {
   return { lock, lockPath, lockBytes: state.bytes, managed, prefixes };
 }
 
-async function fileState(path) {
+async function fileState(root, relativePath) {
+  const path = relativePath ? join(root, relativePath) : root;
   try {
     const stat = await inspectPath(path, { allowMissing: true, ancestorCode: 'BLOCKED_PATH' });
     if (!stat) return { kind: 'missing' };
+    // lstat은 대소문자 구분이 없는 볼륨에서 다른 철자의 엔트리도 찾는다.
+    if (relativePath) {
+      let directory = root;
+      for (const part of relativePath.split('/')) {
+        if (!(await readdir(directory)).includes(part)) return { kind: 'other-spelling' };
+        directory = join(directory, part);
+      }
+    }
     if (stat.isDirectory()) return { kind: 'directory' };
     if (!stat.isFile()) return { kind: 'blocked' };
     const bytes = await readFile(path);
@@ -121,6 +125,10 @@ export function matchesCandidatePath(path, actual, candidate) {
   const state = actual.get(path);
   if (matchesHash(state, candidate.managed.get(path))) return true;
   if (candidate.managed.has(path)) return false;
+  if (state.kind === 'other-spelling') {
+    const counterpart = candidate.prefixes.get(path.normalize('NFC').toLowerCase());
+    return counterpart !== undefined && counterpart.prefix !== path;
+  }
 
   // 제거된 파일의 자리에 새 하위 폴더가 생기거나 상위 경로가 새 관리 파일이 될 수 있다.
   if (state.kind === 'directory') {
@@ -133,7 +141,7 @@ export function matchesCandidatePath(path, actual, candidate) {
 async function validateCandidateFiles(root, manifest, tools) {
   let adapterBytes;
   for (const [path, hash] of manifest.managed) {
-    const state = await fileState(join(root, path));
+    const state = await fileState(root, path);
     if (!matchesHash(state, hash)) throw invalidFile('INVALID_CANDIDATE', path);
     if (path === adapterPath) adapterBytes = state.bytes;
   }
@@ -189,7 +197,7 @@ export async function readUpdate({ projectDir, candidateDir }) {
   const paths = [...new Set([...current.managed.keys(), ...candidate.managed.keys()])].sort();
   const actual = new Map();
   for (const path of paths) {
-    const { kind, hash } = await fileState(join(projectDir, path));
+    const { kind, hash } = await fileState(projectDir, path);
     actual.set(path, { kind, hash });
   }
   const connections = await inspectConnections(projectDir, files, candidate.managed, targets);

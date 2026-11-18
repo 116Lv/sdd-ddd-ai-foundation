@@ -4,10 +4,10 @@ context: |
   .foundation/workflow.md에서 제품 원본과 변경 절차를 찾는다.
 rules:
   proposal:
-    - "기본 ## Why, ## What Changes, ## Capabilities, ## Impact를 유지한다. ## Out of Scope, ## Actors and Permissions, ## Open Questions에 제외 범위, 권한, 미정 사항을 쓴다."
+    - "기본 ## Why, ## What Changes, ## Capabilities, ## Impact를 유지한다. 변경별 skip_specs: true로 명세가 없으면 Capabilities를 생략할 수 있다. ## Out of Scope, ## Actors and Permissions, ## Open Questions에 제외 범위, 권한, 미정 사항을 쓴다."
   specs:
-    - "기본 Requirement와 Scenario 문법을 유지한다. 각 시나리오 제목에 변경 내 고유 ID [AC-001] 형태를 붙이고 WHEN/THEN으로 정상·거절 시 관찰할 결과를 쓴다."
+    - "ADDED·MODIFIED의 각 Requirement에 Scenario를 작성한다. RENAMED·REMOVED는 기본 변경 문법을 따른다. 각 시나리오 제목에 변경 내 고유 ID [AC-001] 형태를 붙이고 WHEN/THEN으로 정상·거절 시 관찰할 결과를 쓴다."
   design:
     - "docs/domain/의 용어·규칙 원본을 참조해 경계와 책임, 중요한 결정, 해당하는 경우 상태·중복·실패·데이터·계약의 영향을 설명한다."
   tasks:
-    - "구현·검증 체크박스마다 (AC: AC-001) 형식으로 명세에 연결하고, 독립 준비 작업에는 (SETUP: 사유)를 쓴다."
+    - "각 시나리오의 구현·검증은 (AC: AC-001) 형식으로 연결한다. RENAMED·REMOVED 작업이나 변경별 skip_specs: true로 명세가 없는 실제 작업은 (CHANGE: 선택한-변경-이름)으로 연결한다. 독립 준비 작업에는 (SETUP: 사유)를 쓴다."

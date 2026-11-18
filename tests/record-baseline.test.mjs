@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, readFile, rm, rmdir } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compareUpdate } from '../tools/compare-update.mjs';
@@ -226,4 +226,40 @@ test('requires_explicit_acknowledgement_for_every_added_managed_path', async (t)
   delete before[lockName];
   delete after[lockName];
   assert.deepEqual(after, before);
+});
+
+test('case_only_rename_requires_the_new_physical_spelling_and_preserves_both_entries', async t => {
+  const input = await fixture(t);
+  const { projectRoot, candidateRoot } = input;
+  const newPath = '.foundation/Guide.md';
+  const contents = await readFile(join(projectRoot, guide));
+  await changeManaged(candidateRoot, { [guide]: null, [newPath]: contents });
+  const options = { ...input, acknowledgeNewPaths: [newPath] };
+  const before = await readFile(join(projectRoot, lockName));
+  await assert.rejects(recordBaseline(options), error => {
+    assert.equal(error.code, 'BASELINE_CONFLICT');
+    assert.ok(error.findings.some(({ path, reason }) => path === newPath && reason === 'candidate-mismatch'));
+    return true;
+  });
+  const oldFile = join(projectRoot, guide);
+  const newFile = join(projectRoot, newPath);
+  // 대소문자를 구분하는 볼륨에서는 실제로 두 경로를 만들고 보존을 확인한다.
+  try {
+    await writeFile(newFile, contents, { flag: 'wx' });
+    await assert.rejects(recordBaseline(options), error => {
+      assert.deepEqual(error.findings, [{ path: guide, reason: 'retired-path-present' }]);
+      return true;
+    });
+    assert.deepEqual(await readFile(oldFile), contents);
+    assert.deepEqual(await readFile(newFile), contents);
+    await rm(newFile);
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  assert.deepEqual(await readFile(join(projectRoot, lockName)), before);
+  await rename(oldFile, oldFile + '.moving');
+  await rename(oldFile + '.moving', newFile);
+  await assert.rejects(recordBaseline(input), { code: 'BASELINE_CONFLICT' });
+  assert.equal((await recordBaseline(options)).version, '0.2.0');
+  assert.deepEqual(await readLock(projectRoot), await readLock(candidateRoot));
 });

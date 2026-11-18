@@ -176,9 +176,36 @@ async function canSkipSpecs(root, dir, report) {
   return entries.length === 1 && /^skip_specs[ \t]*:[ \t]+true(?:[ \t]+#.*)?[ \t]*$/u.test(entries[0]);
 }
 
+function childHeadings(markdown, parent) {
+  const children = [];
+  for (const heading of markdown.headings) {
+    if (heading.index <= parent.index) continue;
+    if (heading.level <= parent.level) break;
+    if (heading.level === parent.level + 1) children.push(heading);
+  }
+  return children;
+}
+
 function checkScenarios(path, markdown, scenarios, report) {
-  const headings = markdown.headings.filter(({ level, title }) => level === 4 && /^Scenario:\s*/u.test(title));
-  if (!headings.length) report('MISSING_SCENARIO', path, 'OpenSpec Scenario 항목이 필요합니다.');
+  const operations = markdown.headings.filter(({ level, title }) => level === 2
+    && /^(ADDED|MODIFIED|RENAMED|REMOVED) Requirements$/iu.test(title));
+  if (!operations.length) report('MISSING_SCENARIO', path, 'OpenSpec 변경 명세의 Requirements 구역이 필요합니다.');
+  let hasScenarioFreeOperation = false;
+  const headings = [];
+  for (const operation of operations) {
+    if (/^(RENAMED|REMOVED) /iu.test(operation.title)) {
+      if (sectionBlocks(markdown, operation).length) hasScenarioFreeOperation = true;
+      else report('EMPTY_SECTION', path, operation.title + '의 변경 내용이 필요합니다.');
+      continue;
+    }
+    const requirements = childHeadings(markdown, operation).filter(({ title }) => /^Requirement:\s*\S/iu.test(title));
+    if (!requirements.length) report('MISSING_SCENARIO', path, operation.title + '에 Requirement와 Scenario가 필요합니다.');
+    for (const requirement of requirements) {
+      const children = childHeadings(markdown, requirement).filter(({ title }) => /^Scenario:\s*/u.test(title));
+      if (!children.length) report('MISSING_SCENARIO', path, requirement.title + '에 Scenario가 필요합니다.');
+      headings.push(...children);
+    }
+  }
   for (const [index, heading] of headings.entries()) {
     const match = heading.title.match(/^Scenario:\s+\[(AC-[0-9]{3})\]\s+\S/u);
     const location = (index + 1) + '번째';
@@ -194,17 +221,24 @@ function checkScenarios(path, markdown, scenarios, report) {
       report('INCOMPLETE_SCENARIO', path, location + ' 시나리오에 WHEN 조건과 THEN 결과가 필요합니다.');
     }
   }
+  return hasScenarioFreeOperation;
 }
 
-function checkTasks(path, markdown, scenarios, report) {
+function checkTasks(path, markdown, scenarios, changeName, allowChangeReference, report) {
   const referenced = new Set();
   let taskCount = 0;
   for (const task of taskLabels(markdown.blocks)) {
     taskCount++;
     const location = taskCount + '번째 작업';
     const markers = [...task.matchAll(/\(AC:\s*([^)]*)\)/gu)];
-    if (!markers.length && !/\(SETUP:\s*[^)\s][^)]*\)/u.test(task)) {
-      report('MISSING_TASK_AC', path, location + '에 (AC: AC-001) 또는 (SETUP: 사유)가 필요합니다.');
+    const changes = [...task.matchAll(/\(CHANGE:\s*([^)]*)\)/gu)];
+    for (const [, value] of changes) {
+      if (!allowChangeReference || value.trim() !== changeName) {
+        report('INVALID_TASK_CHANGE', path, location + '의 CHANGE 참조는 시나리오 없는 작업과 선택한 변경 이름에만 사용할 수 있습니다.');
+      }
+    }
+    if (!markers.length && !changes.length && !/\(SETUP:\s*[^)\s][^)]*\)/u.test(task)) {
+      report('MISSING_TASK_AC', path, location + '에 해당 AC, 시나리오 없는 작업의 변경 이름 또는 준비 사유가 필요합니다.');
     }
     for (const [ , values] of markers) {
       const ids = values.split(',').map((id) => id.trim());
@@ -241,12 +275,13 @@ async function checkChange(root, changeName, report) {
     if (!paths.length && !missing.length) report('MISSING_SPECS', specs, 'specs/<기능>/spec.md 파일이 필요합니다.');
   }
   const scenarios = new Map();
+  let allowChangeReference = skipSpecs;
   for (const path of paths) {
     const spec = await readDocument(root, path, report);
-    if (spec) checkScenarios(path, spec, scenarios, report);
+    if (spec && checkScenarios(path, spec, scenarios, report)) allowChangeReference = true;
   }
   const work = await readDocument(root, tasks, report);
-  if (work) checkTasks(tasks, work, scenarios, report);
+  if (work) checkTasks(tasks, work, scenarios, changeName, allowChangeReference, report);
 }
 
 export async function checkProject(options) {

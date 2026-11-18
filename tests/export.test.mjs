@@ -248,3 +248,11 @@ test('export_cli_help_and_json_use_documented_exit_statuses', async (t) => {
   assert.equal(repeated.status, 2);
   assert.equal(JSON.parse(repeated.stderr).code, 'TARGET_NOT_EMPTY');
 });
+
+test('invalid_version_rejected_before_creating_target', async (t) => {
+  const dir = await scratch(t);
+  for (const invalid of ['0.1.0\n', '0\t1', '0\u00001', '0\u007f1', '0\u20281', '0\u00851']) {
+    await assert.rejects(exportTo(join(dir, 'project'), { version: invalid }), { code: 'INVALID_INPUT' });
+    assert.deepEqual(await readdir(dir), []);
+  }
+});

@@ -12,7 +12,7 @@
 | AC-04 | 미검증 | 변경명·미정 사항·다음 작업·증거 위치는 예시에 있다. 최종 프로젝트 전체를 새 작업자가 로컬 파일에서 읽어 인계받은 실제 세션 결과는 확보하지 못했다. 아래에 명시 호출·발췌본 평가 범위를 기록했다. |
 | AC-05 | 충족 | [Java·VM](../../examples/profiles/java-vm.md)과 [Python·컨테이너](../../examples/profiles/python-container.md)에 같은 다섯 항목으로 기술·실행 환경·명령·검토 방식·미정 사항을 작성했다. 공통 양식을 수정할 필요가 없었다. 예시 명령은 미실행이다. |
 | AC-06 | 충족 | [구조 검사 테스트](../../tests/check-project.test.mjs)의 정상 문서와 결함 사례로 빈 항목, 끊긴 링크, 누락·중복 ID 및 미연결 작업을 확인한다. 공식 OpenSpec 문법 검사는 별도로 실행했다. |
-| AC-07 | 충족 | [예시 검증 기록](../../examples/reservation-cancellation/openspec/changes/cancel-reservation/verification.md)은 실행 전 네 AC를 모두 미검증으로 둔다. 실제 발췌본 평가에서도 작업 체크·문서 검사 통과로 제품 AC를 승인하지 않았다. 아래 회귀 시험에서 관찰한 실패·통과는 기반 도구의 결과다. |
+| AC-07 | 충족 | [예시 검증 기록](../../examples/reservation-cancellation/openspec/changes/cancel-reservation/verification.md)은 실행 전 네 AC를 모두 미검증으로 둔다. 실제 발췌본 평가에서도 작업 체크·문서 검사 통과로 제품 AC를 승인하지 않았다. 가상 제품 AC의 실행 실패는 [스킬 평가 사례 C](skill-evaluation.md)에 기대·관찰 결과와 완료 보류로 기록했다. 아래 회귀 시험에서 관찰한 실패·통과는 기반 도구의 결과다. |
 | AC-08 | 충족 | [비교](../../tests/compare-update.test.mjs)와 [기준 기록](../../tests/record-baseline.test.mjs) 테스트에서 관리 파일 수동 반영, 변경된 연결 처리, 프로젝트 내용 보존, 신규 관리 경로별 승인을 확인한다. [되돌리기 안내](../../distribution/managed/updating.md)에 Git 복구 절차를 명시했다. |
 | AC-09 | 충족 | 임시 사본의 실제 archive 후 현재 명세에 네 시나리오가 남고 변경 원본은 날짜가 붙은 보관 경로로 이동했다. 예시 원본은 검토 중인 상태로 보존했다. |
 | AC-10 | 충족 | 정확한 내보내기 목록, 원본과 다른 프로젝트용 AGENTS, 원본·예시·프로젝트 패키지·기반 CI 제외를 확인했다. PR 양식과 관리 지침은 배포물에 들어간다. |
@@ -34,6 +34,19 @@
 전체 `npm test`는 처음 70/71이었다. 기존 구조 검사 테스트가 starter 루트 목록을 고정해 새 PR 양식 폴더와 Git 속성 파일을 거부했다. 검사 전후 파일 목록 보존을 비교하도록 수정하고 해당 테스트 1/1, 전체 재검증 71/71(실패·건너뜀 0)을 확인했다. 정확한 배포 목록은 내보내기 테스트에서 별도로 검증한다.
 
 원본 문서·예시·내보낸 프로젝트 및 변경 폴더에 복사한 검증 양식 등 Markdown 48개에서 지원 범위의 상대 링크 114개가 존재하는 경로로 연결됐다. 문서 강제 조건과 JSON 동작은 [여정 테스트](../../tests/journey.test.mjs)와 [OpenSpec 호환성 테스트](../../tests/openspec-compatibility.test.mjs)에서 재현할 수 있다. 공식 참조는 [고정 버전 spec-driven 스키마](https://github.com/Fission-AI/OpenSpec/tree/v2.1.0/schemas/spec-driven)다.
+
+## 최종 리뷰 수정 검증
+
+Windows x64·Node 24.14.0에서 회귀 사례 8개가 수정 전 모두 실패하고 수정 후 모두 통과했다. 내보내기·업데이트·구조 검사·공식 호환성 관련 55개가 통과했다. 최종 `npm test`는 77/77, 실패·건너뜀 0이었다.
+
+| 수정 범위 | 실제 결과와 적용 범위 |
+| --- | --- |
+| 소스 체크아웃과 배포 바이트 | 같은 Git 커밋의 새 소스 체크아웃 두 개를 `core.autocrlf=true`와 `false`로 만들고 각각의 export CLI에 같은 이름·버전을 입력했다. 관리 파일 31개의 해시를 담은 lock, starter 9개의 바이트, ZIP 전체 바이트가 일치했다. 기반 소스의 배포 텍스트에 LF를 지정했다. vendored 원본·라이선스는 npm 배포본과 바이트가 일치했고, 프로젝트의 Git 속성은 관리 파일·연결 경로에만 적용한다. 릴리스는 새 소스 체크아웃에서 생성한다. |
+| OpenSpec 변경 유형과 추적 | 현재 명세를 실제 archive로 만든 뒤 RENAMED만 있는 변경과 REMOVED만 있는 변경에 대해 각각 OpenSpec 2.1.0 `validate --strict --json`이 valid, issues 0을 반환했다. 기반 검사는 정확한 `(CHANGE: 선택한-변경-이름)`을 허용하고 다른 이름을 거부했다. 두 변경에 Scenario 없는 ADDED를 섞으면 공식·기반 검사 모두 거부했다. 별도 기반 시험에서 ADDED·MODIFIED 각각의 빈 Requirement와 미연결 AC도 발견했다. 변경별 명시적 `skip_specs: true`만 있는 실제 검증 작업도 CHANGE로 추적한다. SETUP은 준비 작업용이다. |
+| 관리 경로 철자 변경 | Windows의 대소문자 비구분 볼륨에서 옛 철자만 남으면 후보 불일치가 보고됐다. 중간 이름을 거쳐 실제 엔트리를 새 철자로 바꾸고 후보 바이트·신규 경로 승인을 갖추면 기준을 기록했다. 대소문자 구분 볼륨에서는 두 엔트리를 실제로 만들고 폐기 경로 보존을 검사하는 분기가 있다. 해당 분기와 Linux 실행 결과는 원격 CI 대기 중이다. |
+| 버전 입력 | export와 lock 검사에 같은 버전 검증 함수를 사용한다. 줄 끝 개행, 탭, NUL·DEL·다음 줄 제어 문자, 줄 구분자를 입력하면 대상 생성 전에 거부됐다. 새 모듈이나 배포 경로는 추가하지 않았다. |
+| 중단 복구 | 새 ZIP(41개 파일)에서 `.foundation/updating.md`를 읽고 원본과 동일한 복구 절차를 확인했다. 이 문서에 Git 복구점이나 루트 lock이 없을 때의 journal·backup·displaced·null, 추가 편집 보존, 생성본 우선·lock 마지막의 수동 복구 순서를 둔다. 전원 손실 내구성은 보장 범위 밖이다. [복구 절차](../../distribution/managed/updating.md#중단된-연결-복구) |
+| 완료 검토 사례 | [평가 사례 C·D](skill-evaluation.md)에서 가상 제품의 기대·관찰 불일치는 미충족, 실행하지 않은 검증은 미검증으로 기록하고 완료를 보류했다. 시나리오 없는 변경은 네 열을 유지하고 AC ID를 해당 없음으로 적어 원래 변경의 의도·차이·검증 결과로 판단한다. Windows에서 생성된 두 스킬의 형식 검사는 통과했다. 수정본의 사례별 출력은 텍스트 검토 범위이며 새 네이티브 AI 세션·자동 탐색은 미검증이다. 예약 제품의 네 AC는 모두 미검증이다. |
 
 ## AI 세션과 인계 범위
 

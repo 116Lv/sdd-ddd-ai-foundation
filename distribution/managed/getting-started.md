@@ -30,7 +30,7 @@ npm exec --yes --ignore-scripts --package=@fission-ai/openspec@2.1.0 -- openspec
 npm exec --yes --ignore-scripts --package=@fission-ai/openspec@2.1.0 -- openspec instructions proposal --change first-feature --json
 ```
 
-`instructions`는 파일에 쓸 템플릿·규칙·출력 경로를 보여 준다. 안내에 따라 `proposal.md`를 작성한다. 같은 명령에서 `proposal`을 `specs`, `design`, `tasks`로 바꾸어 각 산출물을 작성한다. JSON의 `context`와 `rules`에서 프로젝트별 규칙이 반영됐는지 확인한다. [기능 변경 절차](workflow.md)의 ID 표기로 명세와 구현·검증 작업을 연결한다.
+`instructions`는 파일에 쓸 템플릿·규칙·출력 경로를 보여 준다. 안내에 따라 `proposal.md`를 작성한다. 같은 명령에서 `proposal`을 `specs`, `design`, `tasks`로 바꾸어 각 산출물을 작성한다. JSON의 `context`와 `rules`에서 프로젝트별 규칙이 반영됐는지 확인한다. [기능 변경 절차](workflow.md)의 ID 표기로 ADDED·MODIFIED의 각 시나리오와 작업을 연결한다. RENAMED·REMOVED의 시나리오 없는 작업과 변경별 `skip_specs: true`로 명세가 없는 작업은 `(CHANGE: first-feature)`에 실제 변경 이름을 넣는다. `(SETUP: 사유)`는 환경 준비에 사용한다.
 
 ## 4. 검토, 실행, 기록
 
@@ -42,7 +42,7 @@ npm exec --yes --ignore-scripts --package=@fission-ai/openspec@2.1.0 -- openspec
 
 구조 확인 후 구현 전에 AI에 `foundation-spec-review로 first-feature의 명세와 설계를 검토해 줘`라고 요청하거나 [명세·설계 체크리스트](checklists/spec-design.md)로 자체 검토한다. 구현을 막는 미정 사항은 명세와 작업에 반영한다.
 
-[프로젝트 설정](../docs/project/profile.md)에서 정한 방법으로 구현·테스트하고 PR 또는 변경 폴더의 `verification.md`에 AC별 실제 결과와 미검증 범위를 적는다. [검증 기록 양식](templates/verification.md)을 사용할 수 있다. 완료 시 `foundation-completion-review로 first-feature의 AC와 실행 증거를 대조해 줘`라고 요청하거나 [완료 체크리스트](checklists/completion.md)를 직접 적용한다. OpenSpec 산출물별 규칙과 별개의 검토 단계다.
+[프로젝트 설정](../docs/project/profile.md)에서 정한 방법으로 구현·테스트하고 PR 또는 변경 폴더의 `verification.md`에 AC별 실제 결과와 미검증 범위를 적는다. 시나리오가 없는 변경은 같은 표에 AC `해당 없음 (변경 이름)`을 적고 의도, 실제 차이, 실행한 확인의 결과를 대조한다. 필요한 증거가 없으면 완료를 보류한다. [검증 기록 양식](templates/verification.md)을 사용할 수 있다. 완료 시 `foundation-completion-review로 first-feature의 AC와 실행 증거를 대조해 줘`라고 요청하거나 [완료 체크리스트](checklists/completion.md)를 직접 적용한다. OpenSpec 산출물별 규칙과 별개의 검토 단계다.
 
 ## 5. 현재 명세와 인계
 

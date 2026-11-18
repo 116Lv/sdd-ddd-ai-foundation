@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rename, rmdir, writeFile } from 'node:fs/prom
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { createFoundationLock, lockName } from './lib/lock.mjs';
+import { createFoundationLock, lockName, validVersion } from './lib/lock.mjs';
 import { absolutePath, codedError, inspectPath, pathParts, withStagingDirectory } from './lib/paths.mjs';
 
 const defaultSourceRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -125,7 +125,7 @@ export async function exportProject(options) {
   const { sourceRoot, targetDir, version, projectName } = options ?? {};
   const sourceDir = absolutePath(sourceRoot, '원본');
   const projectDir = absolutePath(targetDir, '내보내기 대상');
-  if (typeof version !== 'string' || !version.trim()
+  if (!validVersion(version)
       || typeof projectName !== 'string' || !projectName.trim() || /[\r\n]/u.test(projectName)) {
     throw codedError('INVALID_INPUT', '기반 버전과 한 줄로 된 프로젝트 이름을 입력하세요.');
   }
