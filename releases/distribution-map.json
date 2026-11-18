@@ -60,6 +60,31 @@
     "mode": "managed"
   },
   {
+    "source": "integrations/claude/CLAUDE.md.template",
+    "target": ".foundation/integrations/claude/CLAUDE.md.template",
+    "mode": "managed"
+  },
+  {
+    "source": "integrations/tools.json",
+    "target": ".foundation/integrations/tools.json",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/connect-tools.mjs",
+    "target": ".foundation/tools/connect-tools.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/lib/lock.mjs",
+    "target": ".foundation/tools/lib/lock.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/lib/paths.mjs",
+    "target": ".foundation/tools/lib/paths.mjs",
+    "mode": "managed"
+  },
+  {
     "source": "distribution/starter/AGENTS.md.template",
     "target": "AGENTS.md",
     "mode": "starter"

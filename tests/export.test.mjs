@@ -49,6 +49,8 @@ test('exports_only_declared_assets', async (t) => {
   const source = join(dir, 'source');
   await cp(join(sourceRoot, 'distribution'), join(source, 'distribution'), { recursive: true });
   await cp(join(sourceRoot, 'releases', 'distribution-map.json'), join(source, 'releases', 'distribution-map.json'));
+  await cp(join(sourceRoot, 'integrations'), join(source, 'integrations'), { recursive: true });
+  await cp(join(sourceRoot, 'tools'), join(source, 'tools'), { recursive: true });
   await writeFile(join(source, 'AGENTS.md'), 'source development instructions');
   await writeFile(join(source, 'package.json'), '{}');
   await writeFile(join(source, 'distribution', 'managed', 'undeclared.md'), 'extra');
@@ -60,6 +62,8 @@ test('exports_only_declared_assets', async (t) => {
     '.foundation/checklists/completion.md',
     '.foundation/checklists/spec-design.md',
     '.foundation/guide.md',
+    '.foundation/integrations/claude/CLAUDE.md.template',
+    '.foundation/integrations/tools.json',
     '.foundation/skills/foundation-completion-review/SKILL.md.template',
     '.foundation/skills/foundation-spec-review/SKILL.md.template',
     '.foundation/templates/adr.md',
@@ -68,6 +72,9 @@ test('exports_only_declared_assets', async (t) => {
     '.foundation/templates/runbook.md',
     '.foundation/templates/state-model.md',
     '.foundation/templates/verification.md',
+    '.foundation/tools/connect-tools.mjs',
+    '.foundation/tools/lib/lock.mjs',
+    '.foundation/tools/lib/paths.mjs',
     '.foundation/workflow.md',
     'AGENTS.md',
     'CONTRIBUTING.md',
@@ -169,6 +176,7 @@ test('an_invalid_mapping_leaves_an_empty_target_intact', async (t) => {
     [entry, { ...entry, target: '.foundation/guide.md/sub.md' }],
     [{ ...entry, target: 'foundation.lock.json' }],
     [{ source: 'distribution/starter/package.json.template', target: 'package.json', mode: 'starter' }],
+    [{ source: 'tools/connect-tools.mjs', target: '.foundation/tools/renamed.mjs', mode: 'managed' }],
   ]) {
     await writeMap(source, entries);
     await assert.rejects(exportTo(targetDir, { sourceRoot: source }), { code: 'INVALID_MAP' });

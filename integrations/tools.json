@@ -1,0 +1,18 @@
+{
+  "skills": [
+    "foundation-completion-review",
+    "foundation-spec-review"
+  ],
+  "tools": {
+    "claude": {
+      "skillDirectory": ".claude/skills",
+      "entryTemplate": ".foundation/integrations/claude/CLAUDE.md.template"
+    },
+    "codex": {
+      "skillDirectory": ".agents/skills"
+    },
+    "cursor": {
+      "skillDirectory": ".agents/skills"
+    }
+  }
+}

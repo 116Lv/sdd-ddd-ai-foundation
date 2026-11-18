@@ -56,8 +56,12 @@ async function loadFiles(sourceDir, projectName) {
     const sourceParts = pathParts(source);
     const targetParts = pathParts(target);
     const starter = mode === 'starter';
+    const connectorRuntime = target === '.foundation/' + source
+      && (/^tools\/.+\.mjs$/u.test(source)
+        || source === 'integrations/tools.json'
+        || source === 'integrations/claude/CLAUDE.md.template');
     if ((!starter && mode !== 'managed')
-        || !source.startsWith('distribution/' + mode + '/')
+        || (!source.startsWith('distribution/' + mode + '/') && (starter || !connectorRuntime))
         || (starter && (!source.endsWith('.template') || target.endsWith('.template')))
         || (starter && targetParts[0].toLowerCase() === '.foundation')
         || (!starter && !target.startsWith('.foundation/'))) {
