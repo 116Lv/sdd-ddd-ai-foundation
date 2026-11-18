@@ -1,5 +1,5 @@
 import { link, mkdir, readFile, rename, rmdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { lockName, sha256 } from './lib/lock.mjs';
@@ -102,7 +102,7 @@ async function planConnection(projectDir, requestedTools) {
     if (before?.equals(bytes)) {
       unchanged.push(target);
     } else {
-      writes.push({ path, before, bytes });
+      writes.push({ target, path, before, bytes });
       created.push(target);
     }
   }
@@ -110,7 +110,7 @@ async function planConnection(projectDir, requestedTools) {
   const connections = { tools, files: Object.fromEntries(Object.keys(files).sort().map((path) => [path, files[path]])) };
   if (writes.length || tools.some((name) => !lock.connections.tools.includes(name))) {
     const bytes = Buffer.from(JSON.stringify({ ...lock, connections }, null, 2) + '\n');
-    writes.push({ path: lockPath, before: lockBytes, bytes });
+    writes.push({ target: lockName, path: lockPath, before: lockBytes, bytes });
   }
   return { result: { created, unchanged, connections }, writes };
 }
@@ -184,21 +184,32 @@ async function rollBack(changes, createdDirectories) {
 
 async function publishConnection(projectDir, { result, writes }) {
   return withStagingDirectory(projectDir, async (stage) => {
+    const files = [];
     for (const [index, file] of writes.entries()) {
       file.staged = join(stage, 'new-' + index);
+      file.backup = file.before ? join(stage, 'old-' + index) : null;
       await writeFile(file.staged, file.bytes, { flag: 'wx' });
+      files.push({
+        target: file.target,
+        backup: file.backup ? basename(file.backup) : null,
+        staged: basename(file.staged),
+        displaced: basename(file.staged) + '-rollback',
+        beforeSha256: file.before ? sha256(file.before) : null,
+        afterSha256: sha256(file.bytes),
+      });
     }
+    // 프로세스가 중단되더라도 원본을 식별할 수 있게 첫 이름 이동 전에 기록한다.
+    const recovery = JSON.stringify({ schemaVersion: 1, files }, null, 2) + '\n';
+    await writeFile(join(stage, 'recovery.json'), recovery, { flag: 'wx', flush: true });
     const changes = [];
     const createdDirectories = [];
     try {
-      for (const [index, file] of writes.entries()) {
-        const { path, before, staged } = file;
+      for (const file of writes) {
+        const { path, before, staged, backup } = file;
         await assertFileState(path, before);
         if (before) {
-          const backup = join(stage, 'old-' + index);
           // 실제로 옮겨낸 파일을 검사한 뒤 빈 경로에만 게시한다.
           await rename(path, backup);
-          file.backup = backup;
           changes.push(file);
           await assertFileState(backup, before, path);
         } else {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import fs, { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import fs, { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, symlink, utimes, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
@@ -306,6 +307,77 @@ test('failed_rollback_keeps_the_previous_file_and_reports_the_recovery_location'
   await assert.rejects(lstat(target), { code: 'ENOENT' });
   assert.deepEqual(await readFile(lockPath), baseline);
   await assert.rejects(lstat(join(projectRoot, '.claude')), { code: 'ENOENT' });
+});
+
+test('interrupted_cli_leaves_the_mapping_needed_for_a_safe_manual_restart', async (t) => {
+  const { projectRoot } = await fixture(t);
+  await connectTools({ projectRoot, tools: ['codex'] });
+  const lockPath = join(projectRoot, lockName);
+  const baseline = await readFile(lockPath);
+  const skillPath = join(projectRoot, sharedSkills[0]);
+  const previousSkill = await readFile(skillPath);
+  await writeProjectFile(projectRoot, skillSources[0], '새 원본');
+  const runner = `
+    import fs from 'node:fs/promises';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { basename, join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const [, connector, projectRoot] = process.argv;
+    const originalLink = fs.link;
+    fs.link = async (from, to) => {
+      if (to === join(projectRoot, 'foundation.lock.json') && basename(from).startsWith('new-')) {
+        process.exit(73);
+      }
+      return originalLink(from, to);
+    };
+    syncBuiltinESMExports();
+    const { connectTools } = await import(pathToFileURL(connector));
+    await connectTools({ projectRoot, tools: ['codex', 'claude'] });
+  `;
+  const exportedCli = join(projectRoot, '.foundation', 'tools', 'connect-tools.mjs');
+  const child = spawnSync(process.execPath, ['--input-type=module', '--eval', runner, exportedCli, projectRoot], {
+    encoding: 'utf8',
+  });
+  assert.equal(child.status, 73, child.stderr);
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' });
+  const [stageName, ...others] = (await readdir(projectRoot)).filter((path) => path.startsWith('.foundation-stage-'));
+  assert.equal(others.length, 0);
+  assert.ok(stageName, 'the interrupted process must leave its recovery directory');
+  const stage = join(projectRoot, stageName);
+  const { schemaVersion, files } = JSON.parse(await readFile(join(stage, 'recovery.json')));
+  assert.equal(schemaVersion, 1);
+  assert.deepEqual(files.map(({ target }) => target), [sharedSkills[0], ...claudeSkills, 'CLAUDE.md', lockName]);
+  assert.equal(files.find(({ target }) => target === sharedSkills[0]).beforeSha256, sha256(previousSkill));
+  assert.equal(files.find(({ target }) => target === lockName).beforeSha256, sha256(baseline));
+
+  const guard = join(projectRoot, '.foundation-connect-lock');
+  await assert.rejects(connectTools({ projectRoot, tools: ['codex'] }), { code: 'CONNECTION_BUSY' });
+  const edited = '사용자가 복구 전에 저장한 규칙';
+  await writeProjectFile(projectRoot, 'CLAUDE.md', edited);
+  for (const { backup, beforeSha256 } of files) {
+    if (backup) assert.equal(sha256(await readFile(join(stage, backup))), beforeSha256);
+  }
+  for (const { target, staged, backup, afterSha256 } of files) {
+    const path = join(projectRoot, target);
+    if (target === 'CLAUDE.md') {
+      assert.notEqual(sha256(await readFile(path)), afterSha256);
+      assert.equal(backup, null);
+      continue;
+    }
+    assert.equal(sha256(await readFile(join(stage, staged))), afterSha256);
+    if (target !== lockName) {
+      assert.equal(sha256(await readFile(path)), afterSha256);
+      await rename(path, join(stage, 'manual-' + staged));
+    }
+    if (backup) await copyFile(join(stage, backup), path, constants.COPYFILE_EXCL);
+  }
+  assert.deepEqual(await readFile(lockPath), baseline);
+  assert.deepEqual(await readFile(skillPath), previousSkill);
+  await rmdir(guard);
+  const retry = await connectTools({ projectRoot, tools: ['codex'] });
+  assert.deepEqual(retry.created, [sharedSkills[0]]);
+  assert.equal(await readFile(skillPath, 'utf8'), '새 원본');
+  assert.equal(await readFile(join(projectRoot, 'CLAUDE.md'), 'utf8'), edited);
 });
 
 test('a_file_in_place_of_a_target_directory_is_a_cli_conflict', async (t) => {
