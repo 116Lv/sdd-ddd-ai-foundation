@@ -2,18 +2,11 @@ import { link, mkdir, readFile, rename, rmdir, writeFile } from 'node:fs/promise
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { lockName, sha256 } from './lib/lock.mjs';
+import { adapterPath, connectionTargets, isRecord, supportedTools, validateAdapter } from './lib/connection-config.mjs';
+import { connectionGuardPath, lockName, sha256, withConnectionGuard } from './lib/lock.mjs';
 import { absolutePath, codedError, inspectPath, pathParts, withStagingDirectory } from './lib/paths.mjs';
 
-const adapterPath = '.foundation/integrations/tools.json';
-const importTemplate = '.foundation/integrations/claude/CLAUDE.md.template';
-const guardName = '.foundation-connect-lock';
-const supportedTools = ['claude', 'codex', 'cursor'];
 const conflictCodes = ['CONNECTION_CONFLICT', 'CONNECTION_BUSY', 'SYMLINK_PATH'];
-
-function isRecord(value) {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 async function readRegularFile(path, code, allowMissing = false) {
   const stat = await inspectPath(path, { allowMissing, ancestorCode: code });
@@ -32,40 +25,9 @@ async function parseJsonFile(path, code) {
   }
 }
 
-async function readAdapter(projectDir) {
-  const { data } = await parseJsonFile(join(projectDir, adapterPath), 'INVALID_ADAPTER');
-  if (!isRecord(data) || !Array.isArray(data.skills) || !data.skills.length
-      || !data.skills.every((name) => typeof name === 'string' && /^foundation-[a-z0-9-]+$/u.test(name))
-      || !isRecord(data.tools) || !supportedTools.every((name) => isRecord(data.tools[name]))) {
-    throw codedError('INVALID_ADAPTER', '도구 연결 목록의 형식이 올바르지 않습니다. ' + adapterPath);
-  }
-  for (const name of supportedTools) {
-    const { skillDirectory, entryTemplate } = data.tools[name];
-    if (!['.agents/skills', '.claude/skills'].includes(skillDirectory)
-        || (entryTemplate !== undefined && entryTemplate !== importTemplate)) {
-      throw codedError('INVALID_ADAPTER', '지정한 도구 연결 경로를 사용할 수 없습니다. ' + name);
-    }
-  }
-  return data;
-}
-
-function connectionTargets(adapter, requestedTools) {
-  const targets = new Map();
-  for (const name of requestedTools) {
-    const { skillDirectory, entryTemplate } = adapter.tools[name];
-    for (const skill of adapter.skills) {
-      targets.set(
-        skillDirectory + '/' + skill + '/SKILL.md',
-        '.foundation/skills/' + skill + '/SKILL.md.template',
-      );
-    }
-    if (entryTemplate) targets.set('CLAUDE.md', entryTemplate);
-  }
-  return targets;
-}
-
 async function planConnection(projectDir, requestedTools) {
-  const adapter = await readAdapter(projectDir);
+  const { data } = await parseJsonFile(join(projectDir, adapterPath), 'INVALID_ADAPTER');
+  const adapter = validateAdapter(data);
   const lockPath = join(projectDir, lockName);
   const { bytes: lockBytes, data: lock } = await parseJsonFile(lockPath, 'INVALID_LOCK');
   if (!isRecord(lock) || lock.schemaVersion !== 1 || !isRecord(lock.managedFiles)
@@ -236,33 +198,6 @@ async function publishConnection(projectDir, { result, writes }) {
   }, { preserveOnError: (error) => error.recovery !== undefined });
 }
 
-async function removeGuard(path) {
-  try {
-    await rmdir(path);
-  } catch (error) {
-    return { code: error.code, path, message: '연결 잠금을 정리할 수 없습니다. ' + path };
-  }
-}
-
-async function withConnectionGuard(path, action) {
-  try {
-    await mkdir(path);
-  } catch (error) {
-    if (error.code !== 'EEXIST') throw error;
-    throw codedError('CONNECTION_BUSY', '다른 연결 작업이 사용 중입니다. ' + path, error);
-  }
-  let result;
-  try {
-    result = await action();
-  } catch (error) {
-    const guardWarning = await removeGuard(path);
-    if (guardWarning) error.guardWarning = guardWarning;
-    throw error;
-  }
-  const guardWarning = await removeGuard(path);
-  return guardWarning ? { ...result, guardWarning } : result;
-}
-
 export async function connectTools(options) {
   const { projectRoot, tools } = options ?? {};
   const projectDir = absolutePath(projectRoot, '프로젝트');
@@ -275,7 +210,7 @@ export async function connectTools(options) {
     }
   }
   const requestedTools = [...new Set(tools)];
-  const guardPath = join(projectDir, guardName);
+  const guardPath = connectionGuardPath(projectDir);
   if (await inspectPath(guardPath, { allowMissing: true })) {
     throw codedError('CONNECTION_BUSY', '다른 연결 작업이 사용 중입니다. ' + guardPath);
   }

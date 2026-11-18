@@ -85,6 +85,11 @@
     "mode": "managed"
   },
   {
+    "source": "distribution/managed/updating.md",
+    "target": ".foundation/updating.md",
+    "mode": "managed"
+  },
+  {
     "source": "distribution/managed/workflow.md",
     "target": ".foundation/workflow.md",
     "mode": "managed"
@@ -100,8 +105,18 @@
     "mode": "managed"
   },
   {
+    "source": "tools/compare-update.mjs",
+    "target": ".foundation/tools/compare-update.mjs",
+    "mode": "managed"
+  },
+  {
     "source": "tools/connect-tools.mjs",
     "target": ".foundation/tools/connect-tools.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/lib/connection-config.mjs",
+    "target": ".foundation/tools/lib/connection-config.mjs",
     "mode": "managed"
   },
   {
@@ -112,6 +127,21 @@
   {
     "source": "tools/lib/paths.mjs",
     "target": ".foundation/tools/lib/paths.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/lib/update-cli.mjs",
+    "target": ".foundation/tools/lib/update-cli.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/lib/update-state.mjs",
+    "target": ".foundation/tools/lib/update-state.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "tools/record-baseline.mjs",
+    "target": ".foundation/tools/record-baseline.mjs",
     "mode": "managed"
   },
   {
