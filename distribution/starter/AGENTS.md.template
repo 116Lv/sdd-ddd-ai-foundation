@@ -1,0 +1,5 @@
+# {{PROJECT_NAME}} 작업 지침
+
+1. 작업을 시작하기 전에 [공통 시작 안내](.foundation/guide.md)와 [프로젝트 설정](docs/project/profile.md)을 읽는다.
+2. [문서 지도](docs/README.md)에서 작업에 해당하는 제품 개요, 도메인 규칙, 현재 명세와 변경 기록을 찾아 확인한다.
+3. 기능을 추가하거나 바꿀 때는 [기능 변경 절차](.foundation/workflow.md)를 따른다. 실행한 검증의 결과와 미검증 항목을 구분해 전달한다.
