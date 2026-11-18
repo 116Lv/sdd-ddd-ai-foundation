@@ -3,6 +3,7 @@ import { copyFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { proposalHeadings } from '../distribution/managed/checks/check-project.mjs';
+import { hasScenarioStep, readMarkdown, sectionBlocks } from '../distribution/managed/checks/markdown.mjs';
 import { applyExample, change, openspec, starter } from './journey-fixture.mjs';
 
 const spec = 'specs/reservation-cancellation/spec.md';
@@ -33,17 +34,29 @@ test('native_spec_format_accepts_ac_heading', async t => {
   assert.ok(report.items.some(item => item.id === change && item.valid));
 });
 
+function scenarioBlocks(source) {
+  const markdown = readMarkdown(source);
+  return markdown.headings
+    .filter(heading => heading.level === 4 && heading.title.startsWith('Scenario: '))
+    .map(heading => {
+      const blocks = sectionBlocks(markdown, heading);
+      assert.ok(hasScenarioStep(blocks, 'WHEN'), heading.title + ' / WHEN');
+      assert.ok(hasScenarioStep(blocks, 'THEN'), heading.title + ' / THEN');
+      return { title: heading.title, body: blocks.map(block => block.raw).join('').trim() };
+    });
+}
+
 test('archive_updates_current_specs', async t => {
   const { project } = await starter(t);
   await applyExample(project);
   const osDir = join(project, 'openspec');
   await assert.rejects(readFile(join(osDir, spec)), { code: 'ENOENT' });
   const delta = await readFile(join(osDir, 'changes', change, spec), 'utf8');
-  const titles = [...delta.matchAll(/^#### Scenario: (.+)$/gmu)].map(match => match[1]);
-  assert.ok(titles.length >= 4);
+  const expectedScenarios = scenarioBlocks(delta);
+  assert.ok(expectedScenarios.length >= 4);
   openspec(project, 'archive', change, '--yes');
   const current = await readFile(join(osDir, spec), 'utf8');
-  for (const title of titles) assert.ok(current.includes(title));
+  assert.deepEqual(scenarioBlocks(current), expectedScenarios);
   const archive = (await readdir(join(osDir, 'changes/archive'))).find(path => path.endsWith('-' + change));
   assert.ok(archive);
   assert.equal(await readFile(join(osDir, 'changes/archive', archive, spec), 'utf8'), delta);
