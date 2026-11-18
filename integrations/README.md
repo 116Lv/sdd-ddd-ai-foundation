@@ -11,11 +11,11 @@ node .foundation/tools/connect-tools.mjs --tool claude --json
 
 | 도구 | 공통 지침 | 프로젝트 스킬 경로 | 확인 상태 |
 | --- | --- | --- | --- |
-| Codex | 루트 `AGENTS.md` | `.agents/skills/foundation-*/SKILL.md` | 파일 생성, CLI의 명시 호출·발췌본 완료 검토 확인. 최종 예시 로컬 문서 읽기·자동 호출 미검증 |
+| Codex | 루트 `AGENTS.md` | `.agents/skills/foundation-*/SKILL.md` | 파일 생성·명시 호출·발췌본 완료 검토 확인. 최신 세션의 직접 읽기 0/18, 문서 인계·자동 호출 미검증 |
 | Claude Code | 루트 `CLAUDE.md`의 `@AGENTS.md` 가져오기 | `.claude/skills/foundation-*/SKILL.md` | 파일 생성 검증 완료 / 실제 세션 미검증 |
 | Cursor | 루트 `AGENTS.md` | `.agents/skills/foundation-*/SKILL.md` | 파일 생성 검증 완료 / 실제 세션 미검증 |
 
-환경·호출 방식과 실제 응답 범위는 [첫 버전 검증 기록](../maintainer/verification/first-release.md)에 있다.
+사용자가 가상 예시와 공통 검토 규칙의 전송을 승인한 뒤 Codex API 세션은 종료 코드 0으로 응답했다. 하위 읽기 명령 7건이 거부됐고, 두 검토 표의 머리글만 확인했다. 완료 행의 상태 ‘판정 불가’는 허용한 세 상태를 벗어났으며 네 AC를 개별 판정한 결과는 없다. 전체 완료는 보류됐다. [네이티브 세션 기록](../maintainer/verification/native-session.md) · [첫 버전 검증 기록](../maintainer/verification/first-release.md)
 
 - Codex 공식 문서의 [스킬 경로](https://learn.chatgpt.com/docs/build-skills)와 [프로젝트 지침](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - Claude Code 공식 문서의 [스킬 경로](https://code.claude.com/docs/en/skills)와 [지침 가져오기](https://code.claude.com/docs/en/memory)
