@@ -1,0 +1,208 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { checkProject } from '../distribution/managed/checks/check-project.mjs';
+import { exportProject } from '../tools/export-project.mjs';
+
+const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+const fixture = fileURLToPath(new URL('./fixtures/checks/change/', import.meta.url));
+const changeName = 'reserve-product';
+const changePath = 'openspec/changes/reserve-product/';
+const specPath = changePath + 'specs/reservations/spec.md';
+const briefPath = 'docs/product/brief.md';
+
+async function scratch(t) {
+  const parent = await realpath(tmpdir());
+  const dir = await mkdtemp(join(parent, 'foundation-check-'));
+  t.after(async () => {
+    assert.equal(dirname(await realpath(dir)), parent);
+    assert.match(relative(parent, dir), /^foundation-check-[^\\/]+$/);
+    await rm(dir, { recursive: true, force: true });
+  });
+  return dir;
+}
+
+async function starter(t) {
+  const targetDir = join(await scratch(t), 'starter');
+  return (await exportProject({ sourceRoot, targetDir, projectName: '예약', version: '0.1.0' })).projectDir;
+}
+
+async function change(t) {
+  const projectRoot = await scratch(t);
+  await cp(fixture, join(projectRoot, changePath), { recursive: true });
+  return projectRoot;
+}
+
+async function replace(projectRoot, path, previous, next) {
+  const file = join(projectRoot, path);
+  const content = (await readFile(file, 'utf8')).replaceAll('\r\n', '\n');
+  assert.ok(content.includes(previous));
+  await writeFile(file, content.replace(previous, next));
+}
+
+function locations(result) {
+  return result.findings.map(({ code, path, message }) => {
+    assert.ok(message.trim());
+    return [code, path];
+  });
+}
+
+test('valid_starter_passes', async (t) => {
+  const projectRoot = await starter(t);
+  const profile = join(projectRoot, 'docs/project/profile.md');
+  const before = await readFile(profile);
+  assert.match(before.toString('utf8'), /미정/u);
+  assert.deepEqual(await checkProject({ projectRoot }), { status: 'pass', findings: [] });
+  assert.deepEqual(await readFile(profile), before);
+  assert.deepEqual((await readdir(projectRoot)).sort(), [
+    '.foundation', 'AGENTS.md', 'CONTRIBUTING.md', 'README.md', 'docs', 'foundation.lock.json',
+  ]);
+});
+
+test('empty_required_section_fails', async (t) => {
+  const projectRoot = await starter(t);
+  await replace(projectRoot, briefPath, '미정. 제품이 해결할 문제와 사용자가 얻을 결과를 적습니다.', '<!-- 작성 예정 -->\n- ');
+  const result = await checkProject({ projectRoot });
+  assert.equal(result.status, 'fail');
+  assert.deepEqual(locations(result), [['EMPTY_SECTION', briefPath]]);
+});
+
+test('missing_internal_file_fails', async (t) => {
+  const projectRoot = await starter(t);
+  await replace(projectRoot, 'README.md', '](docs/product/brief.md)', '](docs/product/missing.md "제품 개요")');
+  const result = await checkProject({ projectRoot });
+  assert.equal(result.status, 'fail');
+  assert.deepEqual(locations(result), [['MISSING_LINK_TARGET', 'README.md']]);
+  assert.match(result.findings[0].message, /docs\/product\/missing\.md/);
+});
+
+test('korean_encoded_path_resolves', async (t) => {
+  const projectRoot = await starter(t);
+  await writeFile(join(projectRoot, 'docs/예약 안내.md'), '# 예약 안내');
+  await replace(projectRoot, briefPath, '## 목표', '[예약 안내](../%EC%98%88%EC%95%BD%20%EC%95%88%EB%82%B4.md#목표)\n\n## 목표');
+  assert.deepEqual(await checkProject({ projectRoot }), { status: 'pass', findings: [] });
+});
+
+test('change_mode_checks_selected_native_artifacts', async (t) => {
+  const projectRoot = await change(t);
+  assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
+});
+
+test('change_proposal_requires_foundation_sections', async (t) => {
+  const projectRoot = await change(t);
+  await replace(projectRoot, changePath + 'proposal.md', '## Out of Scope', '## 기타');
+  assert.deepEqual(locations(await checkProject({ projectRoot, changeName })), [['MISSING_SECTION', changePath + 'proposal.md']]);
+});
+
+test('duplicate_ac_fails', async (t) => {
+  const projectRoot = await change(t);
+  const otherSpec = changePath + 'specs/stock/spec.md';
+  await mkdir(dirname(join(projectRoot, otherSpec)));
+  const before = await readFile(join(projectRoot, specPath), 'utf8');
+  await writeFile(join(projectRoot, otherSpec), before.slice(0, before.indexOf('#### Scenario: [AC-002]')));
+  const result = await checkProject({ projectRoot, changeName });
+  assert.equal(result.status, 'fail');
+  assert.deepEqual(locations(result), [['DUPLICATE_AC', otherSpec]]);
+  assert.match(result.findings[0].message, /AC-001/);
+});
+
+test('unknown_task_ac_fails', async (t) => {
+  const projectRoot = await change(t);
+  const tasks = changePath + 'tasks.md';
+  await replace(projectRoot, tasks, '(AC: AC-002)', '(AC: AC-002, AC-999)');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.equal(result.status, 'fail');
+  assert.deepEqual(locations(result), [['UNKNOWN_TASK_AC', tasks]]);
+  assert.match(result.findings[0].message, /AC-999/);
+});
+
+test('rejects_unlinked_tasks_and_untraced_scenarios', async (t) => {
+  const projectRoot = await change(t);
+  const tasks = changePath + 'tasks.md';
+  await replace(projectRoot, tasks, '(AC: AC-002)', '`(AC: AC-002)`');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.deepEqual(locations(result), [['MISSING_TASK_AC', tasks], ['UNTRACED_AC', specPath]]);
+});
+
+test('ignores_code_fence_samples', async (t) => {
+  const projectRoot = await change(t);
+  const tasks = changePath + 'tasks.md';
+  await replace(projectRoot, tasks, '## 1. 예약 처리', [
+    '## 1. 예약 처리',
+    '', '  ~~~~md', '  [가짜 파일](missing.md)', '  ~~~',
+    '- [ ] 가짜 작업 (AC: AC-999)', '  ~~~~',
+    '`[가짜 파일](missing.md)`와 [참조형][가짜]와 [앵커](#missing)',
+    '[가짜]: missing.md',
+    '[외부](https://example.test/missing.md)',
+    '',
+  ].join('\n'));
+  await replace(projectRoot, specPath, '## ADDED Requirements', [
+    '## ADDED Requirements', '', '```markdown', '#### Scenario: [AC-001] 예시', '```', '',
+  ].join('\n'));
+  assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
+});
+
+test('reports_external_file_references_without_following_symlinks', async (t) => {
+  const projectRoot = await change(t);
+  const dir = join(projectRoot, changePath);
+  const outside = await scratch(t);
+  await writeFile(join(outside, 'present.md'), '# 외부');
+  await symlink(outside, join(dir, 'outside'), process.platform === 'win32' ? 'junction' : 'dir');
+  const proposal = changePath + 'proposal.md';
+  await replace(projectRoot, proposal, '결제 처리.', '[외부](../../../../outside.md)\n[링크](outside/present.md)');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.deepEqual(locations(result), [['EXTERNAL_LINK', proposal], ['EXTERNAL_LINK', proposal]]);
+});
+
+test('spec_free_changes_require_explicit_skip_specs_for_the_selected_change', async (t) => {
+  const projectRoot = await change(t);
+  await rm(join(projectRoot, specPath));
+  await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 문서 교정 (SETUP: 문서만 변경)\n');
+  const result = await checkProject({ projectRoot, changeName });
+  assert.deepEqual(locations(result), [['MISSING_SPECS', changePath + 'specs']]);
+  await writeFile(join(projectRoot, '.openspec.yaml'), 'skip_specs: true\n');
+  const unrelated = join(projectRoot, 'openspec/changes/unrelated');
+  await mkdir(unrelated);
+  await writeFile(join(unrelated, '.openspec.yaml'), 'skip_specs: true\n');
+  assert.equal((await checkProject({ projectRoot, changeName })).status, 'fail');
+  const config = join(projectRoot, changePath, '.openspec.yaml');
+  await writeFile(config, 'rules:\n  skip_specs: true\n');
+  assert.equal((await checkProject({ projectRoot, changeName })).status, 'fail');
+  await writeFile(config, 'schema: spec-driven\nskip_specs: true # documentation only\n');
+  await replace(projectRoot, changePath + 'proposal.md', '## Capabilities\n\n- `reservations`\n\n', '');
+  assert.deepEqual(await checkProject({ projectRoot, changeName }), { status: 'pass', findings: [] });
+});
+
+test('rejects_empty_specs_even_when_the_file_exists', async (t) => {
+  const projectRoot = await change(t);
+  await writeFile(join(projectRoot, specPath), '# 예약\n<!-- 시나리오 작성 예정 -->\n');
+  await writeFile(join(projectRoot, changePath + 'tasks.md'), '- [ ] 테스트 준비 (SETUP: 데이터 준비)\n');
+  assert.deepEqual(locations(await checkProject({ projectRoot, changeName })), [['MISSING_SCENARIO', specPath]]);
+});
+
+test('exported_cli_runs_with_node_and_returns_documented_exit_statuses', async (t) => {
+  const projectRoot = await starter(t);
+  const cli = join(projectRoot, '.foundation/checks/cli.mjs');
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', cwd: projectRoot });
+  const help = run('--help');
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /--change/);
+  const valid = run('--json');
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.deepEqual(JSON.parse(valid.stdout), { status: 'pass', findings: [] });
+  await rm(join(projectRoot, briefPath));
+  const invalid = run('--json');
+  assert.equal(invalid.status, 1, invalid.stderr);
+  assert.ok(locations(JSON.parse(invalid.stdout)).some(([code, path]) => code === 'MISSING_FILE' && path === briefPath));
+  const badInput = run('--json', '--change', '../escape');
+  assert.equal(badInput.status, 2, badInput.stderr);
+  assert.equal(JSON.parse(badInput.stderr).code, 'INVALID_CHANGE_NAME');
+});
+
+test('api_errors_for_a_missing_project_root_use_a_stable_code', async () => {
+  await assert.rejects(checkProject(null), { code: 'INVALID_PROJECT_ROOT' });
+});

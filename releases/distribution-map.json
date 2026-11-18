@@ -10,6 +10,21 @@
     "mode": "managed"
   },
   {
+    "source": "distribution/managed/checks/check-project.mjs",
+    "target": ".foundation/checks/check-project.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/checks/cli.mjs",
+    "target": ".foundation/checks/cli.mjs",
+    "mode": "managed"
+  },
+  {
+    "source": "distribution/managed/checks/markdown.mjs",
+    "target": ".foundation/checks/markdown.mjs",
+    "mode": "managed"
+  },
+  {
     "source": "distribution/managed/guide.md",
     "target": ".foundation/guide.md",
     "mode": "managed"

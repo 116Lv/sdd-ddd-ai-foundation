@@ -61,6 +61,9 @@ test('exports_only_declared_assets', async (t) => {
   assert.deepEqual(await filesIn(projectDir), [
     '.foundation/checklists/completion.md',
     '.foundation/checklists/spec-design.md',
+    '.foundation/checks/check-project.mjs',
+    '.foundation/checks/cli.mjs',
+    '.foundation/checks/markdown.mjs',
     '.foundation/guide.md',
     '.foundation/integrations/claude/CLAUDE.md.template',
     '.foundation/integrations/tools.json',
